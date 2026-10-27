@@ -1,53 +1,49 @@
-# Deploying and running the Kitchen Diary website
+# Deploying and running the Kitchen Diary
 
-The site is one Cloudflare Worker serving the diary page unchanged, plus the API it talks to. It runs at **https://strangers.georgefarrowgreen.com**.
+The site is one Cloudflare Worker serving the diary's pages and the API they talk to. It runs at **https://strangers.georgefarrowgreen.com**, and **every push to `main` redeploys it automatically** (Cloudflare Workers Builds).
 
 | Path | What it is |
 |---|---|
-| `reference/kitchen-diary.html` | The page from Will's Claude diary. **Never edit it**; replace it when Will sends a new version. |
-| `scripts/build.mjs` | Builds `dist/` from the page, adding only the `noindex` meta tag and the `claude-shim.js` script tag. Runs automatically on every deploy. |
-| `public/claude-shim.js` | Provides `window.claude` (db, user, assets) on the website, the "Sign out" and "Admin" links, and hides manager sections from staff. |
-| `public/signin.html`, `public/signin.js` | The sign-in page (with password change, first-admin setup and admin password recovery). |
-| `public/admin.html`, `public/admin.js` | The admin page: people and sync status. |
-| `public/theme.css` | The Liquid Glass theme, loaded by the shim on top of the page's own styles. See `docs/ui-ux-audit.md`. |
+| `public/index.html`, `public/app.js` | The diary: markup and page logic. |
+| `public/app.css`, `public/theme.css`, `public/ui.css` | Styles: base layout, the Liquid Glass theme (colours, materials, dark mode, accessibility settings), then the app layout (bars, sidebar, cards, lists). See `docs/design.md`. |
+| `public/claude-shim.js` | The page's data connection: `window.claude.use("db" \| "user" \| "assets")` backed by the API, with live updates by polling. The name dates from when the page ran inside Claude; see `docs/runtime-api.md`. |
+| `public/signin.html`, `public/signin.js` | Sign-in, choosing a new password, changing a password, first-admin setup and admin password recovery. |
+| `public/admin.html`, `public/admin.js` | The Admin page: people and roles. |
 | `public/icon-*.png`, `public/manifest.webmanifest` | Home Screen icon and app settings. |
-| `src/` | The Worker: `access.ts` (access control, roles and write rate limiting, in one place), `auth.ts` (username + password sign-in and sessions), `admin.ts` (admin API), `docs.ts` (db API), `assets.ts` (PDFs), `sync.ts` (sync API for Will's Claude), `schema.ts` (database tables, created automatically). |
-| `test/` | `api.test.mjs` (API and sync) and `e2e.test.mjs` (the real page in a browser). |
+| `src/` | The Worker: `index.ts` (routing and security headers), `access.ts` (who can reach what: access control, roles and write rate limiting, in one place), `auth.ts` (sign-in and sessions), `admin.ts` (admin API), `docs.ts` (the db API), `assets.ts` (PDFs), `paths.ts` (allowed document paths), `schema.ts` (database tables, created automatically). |
+| `test/` | `api.test.mjs` and `migration.test.mjs` (the API, against `wrangler dev`) and `e2e.test.mjs` (the site in a browser, phone-sized). |
 
-Data lives in a D1 database and allergen PDFs in a KV namespace. Cloudflare creates both on the first deploy, and the Worker creates its own tables, so there are no ids to copy and no migrations to run. The only secret is `SYNC_TOKEN`.
+Data lives in a D1 database (`kitchen-diary`) and allergen PDFs in a KV namespace. Cloudflare creates both on the first deploy and the Worker creates its own tables, so there are no ids to copy and no migrations to run. The only secret is the **setup code**.
 
 ## First deployment (in the Cloudflare dashboard, no terminal)
 
 `georgefarrowgreen.com` must be a domain in the Cloudflare account you use.
 
-1. **Free up the address.** If another Worker already uses `strangers.georgefarrowgreen.com` (for example a "Hello world" starter), open it under **Workers & Pages → that Worker → Settings → Domains & Routes** and remove the domain, or delete that Worker.
-2. **Connect the repo.** **Workers & Pages → Create → Import a repository**, connect GitHub, and pick `StrangersRepo`.
+1. **Free up the address.** If another Worker already uses `strangers.georgefarrowgreen.com`, open it under **Workers & Pages → that Worker → Settings → Domains & Routes** and remove the domain.
+2. **Connect the repo.** **Workers & Pages → Create → Import a repository**, connect GitHub and pick `StrangersRepo`.
    - Project name: `strangers-kitchen-diary` (it must match `name` in `wrangler.jsonc`).
-   - Leave the build command empty and the deploy command as `npx wrangler deploy`.
+   - Build command: leave empty, or `npm run build` (it does nothing). Deploy command: `npx wrangler deploy`.
    - Click **Deploy**. Cloudflare creates the database, the PDF store and the address.
-3. **Add the sync token.** In the new Worker: **Settings → Variables and Secrets → Add**, type **Secret**, name `SYNC_TOKEN`, value a long random string (32+ characters). Keep a copy for Will.
-4. **Check the site.** Open https://strangers.georgefarrowgreen.com: it asks for a name and shows the diary. Tick a box to check it saves.
-5. **Send Will the sync token privately** (not by email or a shared chat). He follows `README.md` → "For Will".
+3. **Add the setup code.** In the Worker: **Settings → Variables and Secrets → Add**, type **Secret**, name `SETUP_CODE`, value a long random string (32+ characters). It must be a runtime secret, not a build variable. Keep it somewhere safe.
+4. **Create the first admin.** Open the site. With no accounts yet it shows "Set up the first admin": enter your name, a username, a password and the setup code.
 
-From then on, **every push to `main` redeploys the site automatically.**
+## Changing the site
 
-## Update the page when Will sends a new `kitchen-diary.html`
+Edit the files in `public/` (or `src/` for the API), run the tests, and push to `main`. The deploy takes about a minute. If a deploy fails, the build log is in the Cloudflare dashboard under the Worker → **Deployments**, and GitHub shows a red cross next to the commit.
 
-Replace `reference/kitchen-diary.html` with the new file, as-is, and push to `main`. If the deploy fails at the build step, the page's structure changed (for example, it now has more than one inline `<script>`); adjust `scripts/build.mjs`. If the new page uses a part of `window.claude` the shim doesn't provide (see `docs/runtime-api.md`), add it to `public/claude-shim.js`.
+## Change the setup code
 
-## Change the sync token
-
-In the Worker: **Settings → Variables and Secrets**, edit `SYNC_TOKEN`. It takes effect immediately. Send Will the new one; until he updates his scheduled task his syncs fail with 401 (nothing is lost; the next run with the new token catches up).
+In the Worker: **Settings → Variables and Secrets**, edit `SETUP_CODE`. It takes effect immediately and only affects creating the first admin and the "Admin? Forgotten password" recovery. Existing accounts and sessions are unaffected. (`SYNC_TOKEN`, the secret's name before the Claude sync was removed, is still accepted if `SETUP_CODE` isn't set.)
 
 ## Back up
 
-The Claude diary is the master copy of everything except allergen PDFs. For a copy of the website's database, from a terminal:
+The website is the only copy of the diary, so take backups. From a terminal:
 
 ```sh
 npx wrangler d1 export kitchen-diary --remote --output backup-$(date +%F).sql
 ```
 
-Keep backups private: they contain the whole diary. D1 also keeps point-in-time history (7 days on the free plan, 30 on paid).
+Keep backups private: they contain the whole diary, including staff names. D1 also keeps point-in-time history (7 days on the free plan, 30 on paid): `npx wrangler d1 time-travel restore kitchen-diary --timestamp=<ISO time>`. Allergen PDFs live in KV and aren't in the export; keep the originals.
 
 ## Run it locally (for code changes)
 
@@ -55,10 +51,10 @@ Needs Node.js 20 or later.
 
 ```sh
 npm install
-cp .dev.vars.example .dev.vars     # a local-only sync token
+cp .dev.vars.example .dev.vars     # a local-only setup code
 npm run dev                        # http://localhost:8787
-npm test                           # typecheck + API/sync tests
-npm run test:e2e                   # browser test; needs: npm i -D playwright && npx playwright install chromium
+npm test                           # typecheck + API tests
+npm run test:e2e                   # browser test; needs Playwright: npm i -D playwright && npx playwright install chromium
 ```
 
 To deploy from a terminal instead of from GitHub: `npx wrangler login`, then `npm run deploy`.
@@ -71,14 +67,11 @@ Writes are limited to 600 per IP address per 15 minutes (`WRITE_LIMIT_PER_15_MIN
 
 ## Accounts
 
-- **First admin.** After deploying, open the site. With no accounts yet it shows "Set up the first admin". Enter your name (shown on records), a username, a password, and the **setup code**, which is the `SYNC_TOKEN` secret. You land on the Admin page.
-- **Adding people.** Admin page → **Add a person**: their name (as it should appear on records), a username (suggested from the name), their role, and a temporary password, or leave it blank to have one created. Give them the username and temporary password in person; they choose their own password when they first sign in. If they've recorded entries under a name before, use exactly that name to keep their history together.
-- **Changing a password.** Anyone can, from the sign-in page ("Change password"), with their current one.
-- **Forgotten password.** An admin opens **Manage** next to the person and sets or creates a temporary password. That signs them out everywhere.
-- **Locked out.** Five wrong passwords lock an account for 10 minutes. An admin can **Unlock** it straight away.
-- **Someone leaves.** **Manage → Switch off.** They can't sign in, and their records stay.
+- **Adding people.** Account menu → **Admin** → **Add person**: their name (as it should appear on records), a username (suggested from the name), their role, and a temporary password, or leave it blank to have one created. Give them the username and temporary password in person; they choose their own password when they first sign in. If they've recorded entries under a name before, use exactly that name to keep their history together.
+- **Changing a password.** Anyone can: account menu → **Change password**.
+- **Forgotten password.** On the Admin page, tap the person and set or create a temporary password. That signs them out everywhere.
+- **Locked out.** Five wrong passwords lock an account for 10 minutes (and each IP is limited to 30 failed attempts per 15 minutes). An admin can **Unlock** it straight away.
+- **Someone leaves.** Tap them on the Admin page → **Switch off**. They can't sign in, and their records stay.
 - **The only admin forgot their password.** On the sign-in page, choose "Admin? Forgotten password" and use the setup code.
-- **Changing the sync token** also changes the setup code. Existing accounts and sessions are unaffected.
-- **Accounts from before usernames** (when people signed in with name + PIN) were given a username made from their name, for example `sam.patel`. Their old PIN works once, to sign in, and then they choose a password.
 
-Access is decided in one function, `authorize()` in `src/access.ts`. Sign-in and sessions are in `src/auth.ts`, the admin API in `src/admin.ts`. Section permissions are `MANAGER_TABS` and `MANAGER_COLLECTIONS` in `src/access.ts`, mirrored by `MANAGER_TABS` in `public/claude-shim.js`.
+Access is decided in one function, `authorize()` in `src/access.ts`. Sign-in and sessions are in `src/auth.ts`, the admin API in `src/admin.ts`. Section permissions are `MANAGER_TABS` and `MANAGER_COLLECTIONS` in `src/access.ts`; the page mirrors `MANAGER_TABS` in `public/app.js` to hide those sections from staff, but the Worker is what enforces them.

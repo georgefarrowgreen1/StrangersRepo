@@ -1,51 +1,38 @@
-# Strangers Coffee Kitchen Diary: staff website
+# Strangers Coffee Kitchen Diary
 
-This folder is everything needed to put the Strangers Coffee food safety diary (Safer Food, Better Business) online at **strangers.georgefarrowgreen.com**, hosted on Cloudflare, kept in sync with the master copy that lives in Will's Claude account.
+The food safety diary (Safer Food, Better Business) for Strangers Coffee's four Norwich sites, online at **https://strangers.georgefarrowgreen.com**. Staff sign in on a phone, iPad or computer and record the day's checks; managers keep the records an Environmental Health Officer asks to see.
 
-It's written so that the person hosting it can hand the whole job to Claude Code.
+It runs on Cloudflare (one Worker, a D1 database and a KV store for PDFs), deployed automatically from this repo. **`README-deploy.md`** covers deploying, secrets, backups and running it locally.
 
----
+## Sites
 
-## For the host (Will's friend)
+| Site | Address |
+|---|---|
+| Roastery | 10 Dove Street, Norwich, NR2 1DE |
+| Cafe | 21 Pottergate, Norwich, NR2 1DS |
+| ASG | 14 All Saints Green, Norwich, NR1 3NA |
+| Factory | 122 Ber Street, Norwich, NR1 3ES |
 
-### What you'll need
+Each site has its own diary. The site button at the top (or top of the sidebar) switches between them, and each device remembers its site.
 
-- A free Cloudflare account. The site runs at **strangers.georgefarrowgreen.com**, so the domain `georgefarrowgreen.com` must be managed in the same Cloudflare account that hosts the site. If its DNS is elsewhere, move it to Cloudflare first.
-- Nothing secret from Will. You'll generate the sync token yourself during set-up; it's also the setup code for the first admin account.
+## What's in it
 
-### How to set it up
+- **Today**: progress through the day (temperatures, opening checks, closing checks, sign-off), anything overdue at the site, fridge and freezer readings with advice when one is out of range, the checklists, problems and changes, and one-tap sign-off as the signed-in person.
+- **Week**: the week's days at a glance, end-of-week checks, notes and sign-off.
+- **Records**: extra checks, cleaning schedule, Prove it checks (pass or fail worked out as you type), allergens (with search, "free from" filters and the allergen PDF).
+- **More**: last 4 weeks, and for managers EHO inspections, HACCP plans and risk assessments, suppliers, contacts, staff training, onboarding documents, the 4-weekly review and Setup.
 
-The site is already built. Connect this GitHub repo to Cloudflare once, in the dashboard, and every push to `main` deploys it automatically. **`README-deploy.md`** has the five steps, plus how to update the page, change the token and back up.
+On phones, Today, Week, Records and More are tabs at the bottom. On iPads in landscape and computers, every section is in a sidebar.
 
-During set-up you create a **sync token**. Send that to Will privately: his Claude needs it to keep the two copies in step.
+## Accounts
 
-### What it costs
-
-Everything here fits Cloudflare's free tier (Workers, D1, KV and a custom domain), with no card needed, for a team this size.
-
----
-
-## For Will
-
-Once your friend has deployed the site and sent you the sync token:
-
-1. **Allow Claude to reach the website.** Your Claude works in a cloud workspace with restricted internet access. In claude.ai, go to **Admin settings → Capabilities** and add `strangers.georgefarrowgreen.com` to the allowed domains. Without this the sync can't run.
-2. **Set up the hourly sync.** Open a new Claude task and paste the prompt in `docs/will-sync-setup.md`, filling in the sync token. Claude will run the first sync and schedule it to repeat every hour. (The diary already shows the names of people who record entries on the website.)
-3. **Check the first sync.** Open the website, pick a site, and check that the diary, cleaning schedule and allergens match the Claude diary.
-
-### How the two copies behave
-
-- **The Claude diary is the master copy.**
-- Changes made on the website reach Claude at the next hourly sync, and changes made in Claude reach the website at the same time. So a change can take up to an hour to appear on the other side.
-- If the same record is changed in both places between syncs, the **Claude version wins** and the website change is listed in a sync log you can review.
-- Reading uploaded documents with Claude (HACCP plans, EHO reports, onboarding documents) works in Claude only. On the website those upload buttons are hidden.
-- Allergen PDFs are kept separately on each side for now; upload them where staff will look for them.
-
-### Accounts
-
-Everyone signs in with a **username and password**. Without signing in, only the sign-in page is visible. There are three roles:
-- **Staff**: the daily diary, end of week, last 4 weeks, extra checks, cleaning, Prove it and allergens.
+Everyone signs in with a **username and password**. Signed out, only the sign-in page is visible. Three roles:
+- **Staff**: Today, Week, last 4 weeks, extra checks, cleaning, Prove it and allergens.
 - **Managers**: also EHO, HACCP & risk, suppliers, contacts, staff training, onboarding, the 4-weekly review and Setup.
-- **Admins**: everything, plus the **Admin** page, where they add people, change roles, set temporary passwords and switch accounts off. It also shows whether the sync is running.
+- **Admins**: everything, plus the **Admin** page (account menu → Admin), where they add people, change roles, set temporary passwords and switch accounts off.
 
-Records made on the website show the person's name (set by the admin), not their username.
+Records show the person's name (set by an admin), not their username. The first admin account is created on the sign-in page with the **setup code** (see `README-deploy.md`).
+
+## What it costs
+
+Everything fits Cloudflare's free tier (Workers, D1, KV and a custom domain) for a team this size, with no card needed. `README-deploy.md` → "Limits and costs" has the numbers to watch.

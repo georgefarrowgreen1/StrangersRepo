@@ -11,7 +11,7 @@ The diary stores JSON documents at slash-separated paths, Firestore-style: an ev
 | ASG | `sites/asg/` | `sites/asg/days/2026-10-27` |
 | Factory | `sites/factory/` | `sites/factory/days/2026-10-27` |
 
-The Roastery's records were recorded before sites existed, so they sit at the top level. **Keep it that way.** The page and the sync both rely on it.
+The Roastery's records were recorded before sites existed, so they sit at the top level. **Keep it that way:** the page relies on it, and moving them would mean migrating every document.
 
 ## Allowed collections
 
@@ -19,31 +19,34 @@ Under each site prefix:
 
 `settings` · `days` · `weeks` · `extras` · `cleaning` · `proveit` · `allergens` · `allergenDocs` · `suppliers` · `contacts` · `staff` · `reviews` · `plans` · `onboarding` · `inspections`
 
-Plus one shared document: `config/shared`. `config/sync` and `config/people` are written only by the sync (see `sync.md`).
+Plus two single documents: `config/shared` (the shared setup, below) and `config/people` (read-only: names for people who recorded in the earlier Claude version of the diary, see below).
 
 Reject any other path with `invalid_argument`.
 
-## D1 schema (suggested)
+## D1 table
+
+`src/schema.ts` creates it (with the `users`, `secrets`, `meta` and `rate_limits` tables for accounts, sessions, change tracking and rate limiting):
 
 ```sql
 CREATE TABLE docs (
-  path        TEXT PRIMARY KEY,          -- e.g. 'sites/cafe/days/2026-10-27'
-  collection  TEXT NOT NULL,             -- e.g. 'sites/cafe/days'
-  doc_id      TEXT NOT NULL,             -- e.g. '2026-10-27'
-  data        TEXT,                      -- JSON; NULL when deleted
-  updated_at  INTEGER NOT NULL,          -- ms since epoch
-  source      TEXT NOT NULL,             -- 'web' (edited on the website) or 'claude' (written by sync)
-  deleted     INTEGER NOT NULL DEFAULT 0 -- tombstone, so the sync can see website deletions
+  path        TEXT PRIMARY KEY,           -- e.g. 'sites/cafe/days/2026-10-27'
+  collection  TEXT NOT NULL,              -- e.g. 'sites/cafe/days'
+  doc_id      TEXT NOT NULL,              -- e.g. '2026-10-27'
+  data        TEXT,                       -- JSON; NULL when deleted
+  updated_at  INTEGER NOT NULL,           -- ms since epoch
+  source      TEXT NOT NULL,              -- 'web'; 'claude' on rows copied from the earlier Claude diary
+  deleted     INTEGER NOT NULL DEFAULT 0, -- deletes are kept as rows so live polling sees them
+  claude_data TEXT,                       -- unused (left from the Claude sync)
+  seq         INTEGER NOT NULL DEFAULT 0, -- change counter for live polling
+  updated_by  TEXT                        -- 'web:<name>'
 );
-CREATE INDEX docs_collection ON docs(collection, deleted);
-CREATE INDEX docs_web_changes ON docs(source, updated_at);
 ```
 
 Queries the page makes: one document by path; a whole collection; a collection ordered by one field and limited (`days` by `date` desc, `weeks` by `week` desc, `reviews` by `date` desc, `proveit` by `at` desc). Ordering on a JSON field with `json_extract(data,'$.date')` is fine at this size (hundreds of documents per collection).
 
 ## Documents
 
-Timestamps (`at`, `lastAt`, `createdAt`, `updatedAt`) are ms since epoch. Dates are `YYYY-MM-DD` strings. `by` fields are user ids: `u_…` for people in Claude, `web:<name>` for people on the website.
+Timestamps (`at`, `lastAt`, `createdAt`, `updatedAt`) are ms since epoch. Dates are `YYYY-MM-DD` strings. `by` fields are user ids: `web:<name>` (the signed-in person's display name), or `u_…` on older records made in the Claude version of the diary, whose names are in `config/people`.
 
 **`settings/main`**, one per site: the site's setup.
 ```
@@ -61,7 +64,7 @@ date
 temps:{<unitId>:{am:{v,by,at}}}
 opening|closing:{items:{<checkId>:bool}, by, at, allDone?:{by,at}}
 problems:{text,by,at}
-signed:{by,at,name}          // name = typed by the person signing (older entries may lack it)
+signed:{by,at,name}          // name = the signed-in person's name (older entries may lack it)
 ```
 The page writes these with nested `update`s such as `{temps:{u1:{am:{v:3.2,by,at}}}}`, which must merge deeply (see `runtime-api.md`).
 
@@ -73,7 +76,7 @@ The page writes these with nested `update`s such as `{temps:{u1:{am:{v:3.2,by,at
 
 **`allergens/<id>`**: `name, source, contains:[allergen names], notes, by, at, importedFrom?`
 
-**`allergenDocs/<id>`**: `title, note, fileName, assetId, size, by, at`. `assetId` points to a file in that platform's own storage (Claude's asset store, or KV on the website), so these are **not synced** (see `sync.md`).
+**`allergenDocs/<id>`**: `title, note, fileName, assetId, size, by, at`. `assetId` is the PDF's key in the KV namespace (`FILES`), served at `/_blob/<assetId>`.
 
 **`suppliers/<id>`**: `name, supplies, contact, phone, email, address, rating, notes, by, at`
 
@@ -90,3 +93,5 @@ The page writes these with nested `update`s such as `{temps:{u1:{am:{v:3.2,by,at
 **`inspections/<id>`** (EHO): `inspectionDate, inspector, authority, visitType, rating, scores:{hygiene,structure,management}, revisitDate, summary, goodPoints[], issues:[{id,issue,area,priority,action,deadline,ref,done,doneBy,doneAt,fixNote}], notes, source, created…/updated…, history[]`
 
 **`config/shared`**: the last published shared setup: `opening, closing, weekly, from, to[], by, at`.
+
+**`config/people`**: `{ "u_…": "<name>" }`, names for the `u_…` ids on older records. Read-only.
