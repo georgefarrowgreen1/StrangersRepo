@@ -287,8 +287,10 @@
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", polishPage);
   else polishPage();
 
-  // Sign-off asks for a typed name; start it from the signed-in person's (devices are shared, so it's
-  // set on every load rather than only the first).
+  // Sign-off asks for a typed name; start it from the signed-in person's. The page fills the box from
+  // localStorage on its first render, before we know who's signed in, so clear the last person's name
+  // straight away (devices are shared) and set this person's once known.
+  try { localStorage.removeItem("sfbb.signName"); } catch (e) {}
   mePromise.then((u) => { try { localStorage.setItem("sfbb.signName", u.name); } catch (e) {} });
 
   /* ---------- API calls ---------- */

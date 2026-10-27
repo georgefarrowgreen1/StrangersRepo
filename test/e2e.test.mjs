@@ -182,6 +182,7 @@ test("staff journey on the real page", async () => {
   // Staff: no admin link, no manager sections, and the server refuses manager changes.
   await page.locator("#who", { hasText: "Recording as Alex Brown" }).waitFor();
   await page.waitForTimeout(300);
+  assert.equal(await page.inputValue("#signName"), "Alex Brown", "sign-off starts with the signed-in person's name, not the last one");
   assert.equal(await page.locator("#who .shim-admin").count(), 0);
   assert.equal(await page.locator(".gl-trigger.split", { hasText: "Management" }).isVisible(), false, "Management menu hidden");
   await page.locator(".gl-trigger.split", { hasText: "Records" }).click();
