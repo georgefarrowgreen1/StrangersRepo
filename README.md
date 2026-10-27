@@ -13,9 +13,7 @@ It's written so that the person hosting it can hand the whole job to Claude Code
 - [Claude Code](https://claude.com/claude-code) installed.
 - Node.js 20 or later.
 - Access to the Cloudflare account that will host the site, with permission to manage Workers, D1, R2 and DNS. Will owns **staffstrangerscoffee.com**. The simplest set-up is for Will to invite you as a member of *his* Cloudflare account, so he keeps ownership of the domain and the data. If the site goes on your account, the domain's DNS must be moved there first.
-- Two values from Will, sent to you privately (not by email or chat that others can read):
-  - the **site password** staff will use;
-  - nothing else. You'll generate the other secrets yourself during set-up.
+- Nothing secret from Will. For now the site is public (no login); accounts will be added later. You'll generate the sync token yourself during set-up.
 
 ### How to set it up
 
@@ -23,7 +21,7 @@ It's written so that the person hosting it can hand the whole job to Claude Code
 2. Open a terminal in the folder and run `claude`.
 3. Say: **"Read CLAUDE.md and set this project up."**
 
-Claude Code will build the site, ask you to log in to Cloudflare (`wrangler login`), ask for the site password, create the database and storage, deploy it and connect the domain. It stops and asks before anything that costs money or touches DNS.
+Claude Code will build the site, ask you to log in to Cloudflare (`wrangler login`), create the database and storage, deploy it and connect the domain. It stops and asks before anything that costs money or touches DNS.
 
 At the end it gives you a **sync token**. Send that to Will privately: his Claude needs it to keep the two copies in step.
 
@@ -49,6 +47,6 @@ Once your friend has deployed the site and sent you the sync token:
 - Reading uploaded documents with Claude (HACCP plans, EHO reports, onboarding documents) works in Claude only. On the website those upload buttons are hidden.
 - Allergen PDFs are kept separately on each side for now; upload them where staff will look for them.
 
-### A note on the password
+### A note on access
 
-A single shared password can't be taken away from one person when they leave, and it should be long and hard to guess. Pick a new one rather than reusing one you've typed elsewhere, and change it when someone leaves (your friend can do that in a minute). If you'd prefer each person to sign in with their own email instead, ask your friend to switch the site to **Cloudflare Access** (free for up to 50 people). `CLAUDE.md` covers both.
+For now the site is **public**: anyone with the address can open the diary and record entries. Staff just type their name the first time so records show who did what. The site is hidden from search engines, but don't share the address beyond the team. Accounts will be added later, either a shared site password or per-person email sign-in with **Cloudflare Access** (free for up to 50 people); `CLAUDE.md` notes both.

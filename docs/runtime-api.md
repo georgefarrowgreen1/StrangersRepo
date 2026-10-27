@@ -52,7 +52,7 @@ Nested plain objects merge recursively; everything else (arrays, strings, number
 Reject with an object `{code, message}`. Codes the page understands:
 - `invalid_argument`: bad path or data. **Note:** the page treats this on a write as "you don't have write access" and switches to read-only, so use it only for genuinely invalid writes.
 - `quota_exceeded`: database full.
-- `revoked`: session ended. Use this when the session cookie has expired; the shim should then send the person to `/login`.
+- `revoked`: session ended. Not used while the site is public; reserved for when logins are added.
 - `not_found`: `update` on a missing document.
 Anything else shows "Couldn't save. Check your connection and try again."
 
@@ -73,7 +73,7 @@ profiles(ids: string[]): Promise<Record<string, {name: string}>>
 upload(file: Blob, opts?: {type?: string}): Promise<{id, url, sizeBytes, contentType}>
 delete(id: string): Promise<{deleted: boolean}>
 ```
-Store in R2 under a random 32-character hex id. Accept `application/pdf` only, 20 MB maximum (reject with `too_large` or `unsupported_type`). Serve at `GET /_blob/<id>` with the stored content type, `Content-Disposition: inline` and `X-Content-Type-Options: nosniff`, behind the same login. `url` = `"/_blob/" + id`.
+Store in R2 under a random 32-character hex id. Accept `application/pdf` only, 20 MB maximum (reject with `too_large` or `unsupported_type`). Serve at `GET /_blob/<id>` with the stored content type, `Content-Disposition: inline` and `X-Content-Type-Options: nosniff`. `url` = `"/_blob/" + id`.
 
 ## `sample`
 

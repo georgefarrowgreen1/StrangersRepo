@@ -5,7 +5,7 @@
 - **Will's Claude** runs the sync, as an hourly scheduled task. It reads and writes the master diary with its artifact database tools, and calls this website's sync API over HTTPS.
 - **The website** only exposes the API below. It never calls Claude.
 
-All routes need `Authorization: Bearer <SYNC_TOKEN>`. Use a constant-time compare and return 401 otherwise. These routes skip the site password and Cloudflare Access.
+All routes need `Authorization: Bearer <SYNC_TOKEN>`. Use a constant-time compare and return 401 otherwise. These are the only routes that need authentication while the site is public.
 
 ## What is synced
 
