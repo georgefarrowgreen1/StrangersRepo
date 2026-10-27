@@ -1,6 +1,6 @@
 # Strangers Coffee Kitchen Diary: staff website
 
-This folder is everything needed to put the Strangers Coffee food safety diary (Safer Food, Better Business) online at **staffstrangerscoffee.com**, hosted on Cloudflare, kept in sync with the master copy that lives in Will's Claude account.
+This folder is everything needed to put the Strangers Coffee food safety diary (Safer Food, Better Business) online at **strangers.georgefarrowgreen.com**, hosted on Cloudflare, kept in sync with the master copy that lives in Will's Claude account.
 
 It's written so that the person hosting it can hand the whole job to Claude Code.
 
@@ -12,7 +12,7 @@ It's written so that the person hosting it can hand the whole job to Claude Code
 
 - [Claude Code](https://claude.com/claude-code) installed.
 - Node.js 20 or later.
-- Access to the Cloudflare account that will host the site, with permission to manage Workers, D1, R2 and DNS. Will owns **staffstrangerscoffee.com**. The simplest set-up is for Will to invite you as a member of *his* Cloudflare account, so he keeps ownership of the domain and the data. If the site goes on your account, the domain's DNS must be moved there first.
+- Access to the Cloudflare account that will host the site, with permission to manage Workers, D1, R2 and DNS. The site runs at **strangers.georgefarrowgreen.com**, so the domain `georgefarrowgreen.com` must be managed in the same Cloudflare account that hosts the site. If its DNS is elsewhere, move it to Cloudflare first.
 - Nothing secret from Will. For now the site is public (no login); accounts will be added later. You'll generate the sync token yourself during set-up.
 
 ### How to set it up
@@ -37,7 +37,7 @@ Everything here fits Cloudflare's free tier (Workers, D1, R2 and a custom domain
 
 Once your friend has deployed the site and sent you the sync token:
 
-1. **Allow Claude to reach the website.** Your Claude works in a cloud workspace with restricted internet access. In claude.ai, go to **Admin settings → Capabilities** and add `staffstrangerscoffee.com` to the allowed domains. Without this the sync can't run.
+1. **Allow Claude to reach the website.** Your Claude works in a cloud workspace with restricted internet access. In claude.ai, go to **Admin settings → Capabilities** and add `strangers.georgefarrowgreen.com` to the allowed domains. Without this the sync can't run.
 2. **Set up the hourly sync.** Open a new Claude task and paste the prompt in `docs/will-sync-setup.md`, filling in the sync token. Claude will run the first sync and schedule it to repeat every hour. (The diary already shows the names of people who record entries on the website.)
 3. **Check the first sync.** Open the website, pick a site, and check that the diary, cleaning schedule and allergens match the Claude diary.
 

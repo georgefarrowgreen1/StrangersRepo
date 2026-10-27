@@ -1,6 +1,6 @@
 # For Will: turning on the hourly sync
 
-Do this once your friend has deployed the website and sent you the sync token, and you've added `staffstrangerscoffee.com` to the allowed domains in **Admin settings → Capabilities**.
+Do this once your friend has deployed the website and sent you the sync token, and you've added `strangers.georgefarrowgreen.com` to the allowed domains in **Admin settings → Capabilities**.
 
 Open a new Claude task and paste everything in the box below, replacing `PASTE-SYNC-TOKEN-HERE` with the token.
 
@@ -8,7 +8,7 @@ Open a new Claude task and paste everything in the box below, replacing `PASTE-S
 Set up an hourly two-way sync between my Kitchen Diary artifact and its staff website.
 
 - Master copy: my Kitchen Diary artifact, https://claude.ai/code/artifact/0008e0f6-d70a-448f-a4cf-dc9cca59487e
-- Website: https://staffstrangerscoffee.com
+- Website: https://strangers.georgefarrowgreen.com
 - Sync token (send it as "Authorization: Bearer <token>"): PASTE-SYNC-TOKEN-HERE
 - Protocol: follow the steps below exactly. The Claude diary always wins a conflict.
 

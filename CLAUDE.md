@@ -1,6 +1,6 @@
 # Build brief: Strangers Coffee Kitchen Diary website
 
-You are setting up a staff website at **https://staffstrangerscoffee.com** for Strangers Coffee, a UK coffee business with four sites in Norwich. **For now the site is public: there is no login.** Accounts will be added later (see Access below). The site is a copy of an existing food safety diary (Safer Food, Better Business) that runs as a Claude artifact in the owner's (Will's) Claude account. **The Claude artifact is the master copy.** This website keeps its own copy of the data in Cloudflare D1, and Will's Claude syncs the two every hour through an API you build here.
+You are setting up a staff website at **https://strangers.georgefarrowgreen.com** for Strangers Coffee, a UK coffee business with four sites in Norwich. **For now the site is public: there is no login.** Accounts will be added later (see Access below). The site is a copy of an existing food safety diary (Safer Food, Better Business) that runs as a Claude artifact in the owner's (Will's) Claude account. **The Claude artifact is the master copy.** This website keeps its own copy of the data in Cloudflare D1, and Will's Claude syncs the two every hour through an API you build here.
 
 Read this whole file, then `docs/data-model.md`, `docs/runtime-api.md` and `docs/sync.md` before writing code. The person running you is the host, not Will. Ask them before anything that costs money, changes DNS, or needs a secret.
 
@@ -61,7 +61,7 @@ Routes under `/api/sync/` require `Authorization: Bearer <SYNC_TOKEN>` (constant
    - Sync: `GET /api/sync/changes?since=0` returns the web edits; `POST /api/sync/apply` overwrites a document and deletes another; `POST /api/sync/manifest` removes documents not in the list; all of them return 401 without the token.
    - The page loads without any login; the first visit asks for a name, and records show that name.
 6. Ask the host to run `wrangler login`. Create the D1 database and R2 bucket, apply migrations, set the `SYNC_TOKEN` secret and deploy.
-7. Connect the custom domain `staffstrangerscoffee.com` to the Worker (Workers custom domain). The domain must be a zone in the same Cloudflare account. If it isn't, stop and explain to the host what's needed. Ask before changing any DNS record.
+7. Connect the custom domain `strangers.georgefarrowgreen.com` to the Worker (Workers custom domain). The parent domain `georgefarrowgreen.com` must be a zone in the same Cloudflare account. If it isn't, stop and explain to the host what's needed. Ask before changing any DNS record.
 8. Check the live site: the page loads and saves without a login, `/api/sync/changes` with the token returns `[]`, and HTTPS is enforced.
 9. Tell the host: the site URL, that it is public until accounts are added, and the **sync token**, to send to Will privately. Remind them not to paste the token anywhere public.
 

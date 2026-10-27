@@ -34,7 +34,7 @@ npm run test:e2e         # browser test; needs: npm i -D playwright && npx playw
 
 ## First deployment
 
-1. **Log in to Cloudflare** with an account that can manage Workers, D1, R2 and the `staffstrangerscoffee.com` zone:
+1. **Log in to Cloudflare** with an account that can manage Workers, D1, R2 and the `georgefarrowgreen.com` zone:
    ```sh
    npx wrangler login
    ```
@@ -52,20 +52,17 @@ npm run test:e2e         # browser test; needs: npm i -D playwright && npx playw
    node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
    npx wrangler secret put SYNC_TOKEN
    ```
-5. **Connect the domain.** `staffstrangerscoffee.com` must be a zone in the *same* Cloudflare account (Dashboard → Websites). If it isn't, move it there first (add the site, then change the nameservers at the registrar). In `wrangler.jsonc`, uncomment:
-   ```jsonc
-   "routes": [{ "pattern": "staffstrangerscoffee.com", "custom_domain": true }],
-   ```
-   On deploy, Cloudflare creates the DNS record and the certificate for the hostname. If a DNS record for `staffstrangerscoffee.com` already exists (an old website, for example), deploy stops; decide with Will before deleting it.
+5. **Check the domain.** The site runs at `strangers.georgefarrowgreen.com` (set in `wrangler.jsonc` under `routes`). The parent domain `georgefarrowgreen.com` must be a zone in the *same* Cloudflare account (Dashboard → Websites). If it isn't, move it there first (add the site, then change the nameservers at the registrar).
+   On deploy, Cloudflare creates the DNS record and the certificate for `strangers.georgefarrowgreen.com` only; the rest of `georgefarrowgreen.com` is untouched. If a `strangers` DNS record already exists, deploy stops; decide what to do with it before deleting it.
 6. **Deploy:**
    ```sh
    npm run deploy
    ```
 7. **Check the live site:**
-   - https://staffstrangerscoffee.com loads, asks for a name, and saves a ticked check.
-   - `curl -H "Authorization: Bearer <token>" "https://staffstrangerscoffee.com/api/sync/changes?since=0"` returns `{"now":…,"changes":[…]}` (only edits you just made on the site, otherwise `[]`).
+   - https://strangers.georgefarrowgreen.com loads, asks for a name, and saves a ticked check.
+   - `curl -H "Authorization: Bearer <token>" "https://strangers.georgefarrowgreen.com/api/sync/changes?since=0"` returns `{"now":…,"changes":[…]}` (only edits you just made on the site, otherwise `[]`).
    - The same request without the header returns 401.
-   - `curl -I http://staffstrangerscoffee.com` redirects to `https://`.
+   - `curl -I http://strangers.georgefarrowgreen.com` redirects to `https://`.
 8. **Send Will the sync token privately** (not by email or a shared chat). He follows `README.md` → "For Will". Don't paste it anywhere public.
 
 ## Redeploy

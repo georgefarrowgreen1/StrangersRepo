@@ -37,8 +37,9 @@
     "WRITE_LIMIT_PER_15_MIN": "600"
   },
 
-  // Custom domain: uncomment once staffstrangerscoffee.com is a zone in this Cloudflare account.
-  // "routes": [{ "pattern": "staffstrangerscoffee.com", "custom_domain": true }],
+  // Custom domain. georgefarrowgreen.com must be a zone in the same Cloudflare account; on deploy,
+  // Cloudflare creates the DNS record and certificate for this hostname.
+  "routes": [{ "pattern": "strangers.georgefarrowgreen.com", "custom_domain": true }],
 
   "observability": { "enabled": true }
 }
