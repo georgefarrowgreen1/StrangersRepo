@@ -1,0 +1,237 @@
+/*
+ * Liquid Glass theme for the Kitchen Diary website.
+ *
+ * Restyles reference/kitchen-diary.html without editing it: claude-shim.js loads this file after the
+ * page's own <style>, so these rules win. It overrides the page's design tokens first, then adds
+ * translucent "glass" materials to the chrome (tab bar, cards, sheets, toast).
+ *
+ * To turn the theme off, delete the THEME line in public/claude-shim.js. If a new version of the page
+ * from Will renames classes, the affected parts fall back to his original styling.
+ */
+
+/* ---------- tokens ---------- */
+:root{
+  --bg:#edf1f6; --surface:#ffffff; --sunk:rgba(118,128,148,.12); --line:rgba(60,72,92,.15);
+  --fg:#0b1220; --muted:#545f70; --accent:#0062cc; --accent-ink:#ffffff;
+  --ok:#17733a; --ok-bg:rgba(52,199,89,.17); --warn:#835000; --warn-bg:rgba(255,159,10,.2); --bad:#c0261b; --bad-bg:rgba(255,59,48,.14);
+  --display:-apple-system,BlinkMacSystemFont,"SF Pro Display",system-ui,"Segoe UI",Roboto,sans-serif;
+  --body:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,"Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  --r:12px; --r-lg:22px;
+
+  --glass:rgba(255,255,255,.6);
+  --glass-thick:rgba(255,255,255,.8);
+  --glass-edge:rgba(255,255,255,.8);
+  --glass-hi:inset 0 1px 0 rgba(255,255,255,.95),inset 0 0 0 .5px rgba(255,255,255,.5);
+  --lift:0 1px 2px rgba(16,24,40,.05),0 10px 30px -8px rgba(16,24,40,.12);
+  --float:0 2px 6px rgba(16,24,40,.08),0 18px 40px -10px rgba(16,24,40,.22);
+  --blur:blur(24px) saturate(180%);
+  --tint:rgba(0,98,204,.10);
+  --ambient:
+    radial-gradient(42% 38% at 8% 4%,rgba(0,122,255,.20),transparent 70%),
+    radial-gradient(36% 32% at 96% 14%,rgba(48,209,178,.16),transparent 70%),
+    radial-gradient(48% 40% at 78% 96%,rgba(255,159,10,.13),transparent 70%),
+    radial-gradient(40% 36% at 4% 80%,rgba(175,82,222,.10),transparent 70%);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#05070b; --surface:#1a1f27; --sunk:rgba(255,255,255,.07); --line:rgba(255,255,255,.12);
+  --fg:#f2f5f9; --muted:#a2acba; --accent:#4ea4ff; --accent-ink:#03101f;
+  --ok:#52d67f; --ok-bg:rgba(48,209,88,.18); --warn:#ffc35c; --warn-bg:rgba(255,159,10,.18); --bad:#ff7a70; --bad-bg:rgba(255,69,58,.18);
+  --glass:rgba(36,42,52,.52);
+  --glass-thick:rgba(30,35,44,.82);
+  --glass-edge:rgba(255,255,255,.13);
+  --glass-hi:inset 0 1px 0 rgba(255,255,255,.14),inset 0 0 0 .5px rgba(255,255,255,.06);
+  --lift:0 1px 2px rgba(0,0,0,.3),0 12px 32px -10px rgba(0,0,0,.6);
+  --float:0 2px 8px rgba(0,0,0,.4),0 20px 44px -10px rgba(0,0,0,.7);
+  --tint:rgba(78,164,255,.16);
+  --ambient:
+    radial-gradient(42% 38% at 8% 4%,rgba(10,132,255,.28),transparent 70%),
+    radial-gradient(36% 32% at 96% 14%,rgba(48,209,178,.16),transparent 70%),
+    radial-gradient(48% 40% at 78% 96%,rgba(255,159,10,.12),transparent 70%),
+    radial-gradient(40% 36% at 4% 80%,rgba(191,90,242,.16),transparent 70%);
+}}
+
+/* ---------- canvas & type ---------- */
+html{-webkit-text-size-adjust:100%}
+body{background:var(--bg);font-family:var(--body);font-size:16px;letter-spacing:-.006em;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
+body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background:var(--ambient),var(--bg)}
+.wrap{gap:16px;padding-block:16px 64px}
+h1{font-family:var(--display);font-stretch:normal;font-weight:800;font-size:clamp(32px,8vw,42px);letter-spacing:-.03em;line-height:1.05}
+h2{font-family:var(--display);font-stretch:normal;font-weight:700;font-size:20px;letter-spacing:-.02em}
+h3{font-size:16px;font-weight:650;letter-spacing:-.01em}
+.label{font-size:11.5px;letter-spacing:.06em;font-weight:650}
+.sub{font-size:15px}
+.note{font-size:14px}
+.by{font-size:13px}
+.mono,.res,.read input,.day .d{font-family:var(--mono)}
+
+/* ---------- glass materials ---------- */
+section.panel,.site,.ehohead,.savebar,nav.tabs,.toast,.shim-box{
+  background:var(--glass);
+  -webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
+  border:1px solid var(--glass-edge);
+  box-shadow:var(--glass-hi),var(--lift);
+}
+section.panel{border-radius:var(--r-lg);padding:20px;gap:14px}
+@media (max-width:520px){section.panel{padding:16px;border-radius:20px}}
+
+/* Insets inside glass: tinted, not blurred again (glass on glass reads as mud). */
+.unit,.checks li.alldone,.preview,.sec-edit,.iss-edit,.day,.scores div,.drop{background:var(--sunk);border-color:transparent;border-radius:16px}
+.unit{padding:14px}
+.drop{border:1.5px dashed var(--line)}
+.drop.over{border-color:var(--accent);background:var(--tint)}
+.empty{border-radius:16px;border-color:var(--line)}
+
+/* ---------- header ---------- */
+header.top{align-items:center;padding-top:4px}
+header.top .label{color:var(--accent)}
+#who{gap:8px;padding:6px 6px 6px 12px;border-radius:99px;background:var(--glass);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);border:1px solid var(--glass-edge);box-shadow:var(--glass-hi)}
+#who:empty{display:none}
+#who .shim-change{min-height:32px;padding:0 12px;border-radius:99px;background:var(--tint);color:var(--accent);text-decoration:none;font-weight:600;font-size:13px}
+@media (max-width:520px){header.top .sub{display:none}}
+
+/* ---------- site switcher ---------- */
+.sites{gap:10px}
+.site{border-radius:18px;padding:12px 14px;transition:transform .2s cubic-bezier(.2,.8,.2,1),box-shadow .2s}
+.site b{font-family:var(--display);font-stretch:normal;font-weight:700;font-size:18px;letter-spacing:-.02em}
+.site .by{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.site[aria-pressed="true"]{background:var(--glass-thick);border-color:var(--accent);box-shadow:var(--glass-hi),0 0 0 1.5px var(--accent),var(--float)}
+
+/* ---------- tab bar: a floating glass bar pinned to the top ---------- */
+.wrap>header.top{order:-3}
+.wrap>#sites{order:-2}
+.wrap>nav.tabs{order:-1}
+nav.tabs{position:sticky;top:calc(env(safe-area-inset-top,0px) + 8px);z-index:4;border-radius:24px;padding:8px;gap:6px;margin-inline:-4px}
+nav.tabs .grp{gap:4px}
+nav.tabs .grp>.label{width:auto;padding:0 6px 0 8px;font-size:10.5px}
+nav.tabs button{background:transparent;border:0;border-radius:99px;color:var(--fg);font-weight:600;font-size:14px;padding:7px 13px;transition:background-color .2s,color .2s}
+nav.tabs button:hover{background:var(--sunk)}
+nav.tabs button[aria-selected="true"]{background:var(--accent);color:var(--accent-ink);box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 4px 12px -2px color-mix(in srgb,var(--accent) 55%,transparent)}
+/* Phones: one row that scrolls sideways, edges fading out to hint there's more. */
+@media (max-width:720px){
+  nav.tabs{display:flex;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x proximity;scrollbar-width:none;
+    -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 14px,#000 calc(100% - 22px),transparent);mask-image:linear-gradient(90deg,transparent 0,#000 14px,#000 calc(100% - 22px),transparent)}
+  nav.tabs::-webkit-scrollbar{display:none}
+  nav.tabs .grp{flex-wrap:nowrap;flex:none}
+  nav.tabs .grp>.label{width:auto;padding-left:10px}
+  nav.tabs .grp+.grp{border-left:1px solid var(--line);padding-left:4px}
+  nav.tabs button{scroll-snap-align:center}
+}
+
+/* ---------- controls ---------- */
+.btn{border-radius:99px;padding:10px 18px;font-weight:600;letter-spacing:-.01em;box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 4px 14px -4px color-mix(in srgb,var(--accent) 60%,transparent);transition:transform .15s,filter .15s}
+.btn.ghost{background:var(--glass);color:var(--accent);border:1px solid var(--glass-edge);box-shadow:var(--glass-hi),0 1px 2px rgba(16,24,40,.06)}
+.btn.sm{padding:6px 14px;font-size:14px}
+.btn.danger{color:var(--bad)}
+.btn:not(:disabled):active{transform:scale(.97);filter:brightness(.96)}
+.btn:disabled{opacity:.4;box-shadow:none}
+.linkbtn,.plan-card .open{color:var(--accent)}
+
+input[type=text],input[type=number],input[type=date],input[type=tel],input[type=email],textarea,select{
+  background:var(--sunk);border:1px solid transparent;border-radius:var(--r);padding:11px 13px;font-size:16px;transition:border-color .15s,background-color .15s,box-shadow .15s}
+input[type=text]:focus,input[type=number]:focus,input[type=date]:focus,input[type=tel]:focus,input[type=email]:focus,textarea:focus,select:focus{
+  background:var(--surface);border-color:var(--accent);box-shadow:0 0 0 4px var(--tint);outline:none}
+::placeholder{color:var(--muted);opacity:.75}
+:focus-visible{outline:3px solid color-mix(in srgb,var(--accent) 70%,transparent);outline-offset:2px;border-radius:10px}
+
+.seg{border:0;border-radius:99px;background:var(--sunk);padding:3px;gap:2px}
+.seg button{border-radius:99px;padding:6px 16px;color:var(--fg)}
+.seg button[aria-pressed="true"]{background:var(--glass-thick);color:var(--accent);box-shadow:0 1px 3px rgba(16,24,40,.12),inset 0 1px 0 rgba(255,255,255,.6)}
+
+.toc button{background:var(--sunk);border-radius:99px}
+
+/* ---------- checklists: iOS-style round checkmarks ---------- */
+.checks{gap:0}
+.checks label{align-items:center;padding:10px 8px;border-radius:12px;min-height:44px;box-sizing:border-box}
+.checks label:hover{background:var(--sunk)}
+.checks input[type=checkbox],.issue>input[type=checkbox]{
+  -webkit-appearance:none;appearance:none;width:24px;height:24px;margin:0;flex:none;border-radius:50%;
+  border:1.5px solid color-mix(in srgb,var(--muted) 70%,transparent);background:var(--surface);
+  display:grid;place-items:center;cursor:pointer;transition:background-color .18s,border-color .18s}
+.checks input[type=checkbox]::after,.issue>input[type=checkbox]::after{
+  content:"";width:6px;height:11px;border:solid var(--accent-ink);border-width:0 2.5px 2.5px 0;transform:translateY(-1px) rotate(45deg) scale(0);transition:transform .18s cubic-bezier(.2,.8,.2,1.4)}
+.checks input[type=checkbox]:checked,.issue>input[type=checkbox]:checked{background:var(--accent);border-color:var(--accent)}
+.issue>input[type=checkbox]:checked{background:var(--ok);border-color:var(--ok)}
+.checks input[type=checkbox]:checked::after,.issue>input[type=checkbox]:checked::after{transform:translateY(-1px) rotate(45deg) scale(1)}
+.checks input[type=checkbox]:disabled{opacity:.5;cursor:not-allowed}
+.checks li.alldone{margin-top:10px}
+.checks li.alldone input[type=checkbox]{width:28px;height:28px}
+.checks li.alldone.on{background:var(--ok-bg);border-color:transparent;box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--ok) 45%,transparent)}
+.checks li.alldone.on input[type=checkbox]{background:var(--ok);border-color:var(--ok)}
+.alg input,.toggles input,.chk-row input[type=checkbox],.doc-table input[type=checkbox]{accent-color:var(--accent);width:20px;height:20px}
+
+/* ---------- status ---------- */
+.pill,.rate{font-weight:650;padding:4px 10px;background:var(--sunk);color:var(--muted)}
+.pill.ok,.rate.ok{background:var(--ok-bg);color:var(--ok)}
+.pill.warn,.rate.warn{background:var(--warn-bg);color:var(--warn)}
+.pill.bad,.rate.bad{background:var(--bad-bg);color:var(--bad)}
+.banner{border-radius:16px;background:var(--warn-bg);border:1px solid color-mix(in srgb,var(--warn) 25%,transparent)}
+.sitetag{color:var(--accent)}
+
+/* Temperature readings */
+.read input{font-size:22px;padding:10px 14px;background:var(--surface)}
+.read.ok input{background:var(--ok-bg);border-color:color-mix(in srgb,var(--ok) 55%,transparent)}
+.read.warn input{background:var(--warn-bg);border-color:color-mix(in srgb,var(--warn) 55%,transparent)}
+.read.bad input{background:var(--bad-bg);border-color:var(--bad)}
+
+/* Lists inside panels */
+.task,.card,.plan-card,.att-row,.issue,.qa{border-bottom-color:var(--line)}
+.att-row{padding:12px 0}
+
+/* History strip */
+.day{border-radius:12px;padding:7px}
+.day .bars i{height:6px;border-radius:99px}
+.day.today{outline:2px solid var(--accent);outline-offset:1px}
+/* Closed days: muted with a hatch instead of half opacity, so their dates stay readable. */
+.day.closed{opacity:1;background:repeating-linear-gradient(135deg,var(--sunk) 0 6px,transparent 6px 12px)}
+.day.closed .d{color:var(--muted)}
+@media (max-width:520px){.day{padding:5px;border-radius:10px}}
+
+/* Tables */
+th,td{border-bottom-color:var(--line)}
+.ratingbadge{border-radius:22px}
+.scores div{border:0}
+.progress{background:var(--sunk)}
+
+/* Floating chrome */
+.savebar{border-radius:22px;box-shadow:var(--glass-hi),var(--float)}
+.savebar.idle{box-shadow:var(--glass-hi)}
+.toast{background:var(--glass-thick);color:var(--fg);border-radius:99px;padding:11px 20px;font-weight:600;box-shadow:var(--glass-hi),var(--float)}
+.ehohead{border-radius:99px}
+
+/* Name prompt from claude-shim.js, as a glass sheet */
+.shim-veil{background:rgba(10,15,25,.28);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.shim-box{background:var(--glass-thick);border-radius:28px;padding:24px;box-shadow:var(--glass-hi),var(--float)}
+.shim-box h2{font-size:22px}
+.shim-box input{background:var(--sunk);border:1px solid transparent;border-radius:var(--r);padding:12px 14px}
+.shim-box input:focus{background:var(--surface);border-color:var(--accent);box-shadow:0 0 0 4px var(--tint);outline:none}
+@media (max-width:520px){.shim-veil{place-items:end center}.shim-box{max-width:none;border-radius:28px 28px 22px 22px;padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}}
+
+/* ---------- touch: 44pt targets ---------- */
+@media (pointer:coarse){
+  .btn,.btn.sm,nav.tabs button,.seg button,.toc button,#who .shim-change{min-height:44px}
+  .btn.sm{padding:8px 16px}
+  .alg label,.toggles label{min-height:44px}
+  .day{min-height:44px}
+}
+
+/* ---------- motion & accessibility ---------- */
+@media (prefers-reduced-motion:no-preference){
+  .site:not([aria-pressed="true"]):hover{transform:translateY(-1px)}
+  .shim-box{animation:shim-in .32s cubic-bezier(.2,.8,.2,1)}
+  @keyframes shim-in{from{transform:translateY(16px) scale(.98);opacity:0}}
+}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}}
+/* Reduce Transparency (iOS Settings → Accessibility): solid surfaces, no blur. */
+@media (prefers-reduced-transparency:reduce){
+  :root{--glass:var(--surface);--glass-thick:var(--surface);--ambient:none}
+  section.panel,.site,.ehohead,.savebar,nav.tabs,.toast,.shim-box,#who,.btn.ghost{-webkit-backdrop-filter:none;backdrop-filter:none}
+}
+/* Increase Contrast: firmer edges and text. */
+@media (prefers-contrast:more){
+  :root{--line:color-mix(in srgb,var(--fg) 45%,transparent);--glass-edge:color-mix(in srgb,var(--fg) 35%,transparent);--muted:color-mix(in srgb,var(--fg) 82%,var(--bg))}
+  section.panel,.site,nav.tabs,.btn.ghost{border-width:1.5px}
+}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  :root{--glass:var(--surface)}
+}

@@ -4,6 +4,18 @@
 (() => {
   "use strict";
 
+  /* ---------- theme ---------- */
+
+  // The Liquid Glass theme (public/theme.css). Delete this line to go back to the page's own look.
+  const THEME = "/theme.css";
+
+  // Written during parsing so it lands after the page's <style> (and wins) and blocks the first paint,
+  // so the page never flashes unstyled.
+  if (THEME) {
+    if (document.readyState === "loading") document.write(`<link rel="stylesheet" href="${THEME}">`);
+    else document.body.appendChild(Object.assign(document.createElement("link"), { rel: "stylesheet", href: THEME }));
+  }
+
   /* ---------- the person's name (no login for now) ---------- */
 
   const COOKIE = "sfbb_name";
@@ -28,7 +40,7 @@
 
   function ensureName() {
     if (name) return Promise.resolve(name);
-    if (!namePromise) namePromise = askName({ first: true }).then((n) => { name = n; saveName(n); return n; });
+    if (!namePromise) namePromise = askName({ first: true }).then((n) => { name = n; saveName(n); prefillSignName(n); return n; });
     return namePromise;
   }
 
@@ -88,6 +100,7 @@
     const n = await askName({ first: false });
     if (!n || n === name) return;
     saveName(n);
+    try { localStorage.setItem("sfbb.signName", n); } catch (e) {}
     location.reload();
   }
 
@@ -113,6 +126,74 @@
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", watchWho);
   else watchWho();
+
+  /* ---------- page polish (the page file itself stays untouched) ---------- */
+
+  function addHead(tag, attrs) {
+    document.head.appendChild(Object.assign(document.createElement(tag), attrs));
+  }
+
+  function polishPage() {
+    document.documentElement.lang = document.documentElement.lang || "en-GB";
+    document.title = "Kitchen Diary · Strangers Coffee";
+
+    // Add to Home Screen: name, icon, full-screen launch and status-bar colour.
+    addHead("meta", { name: "theme-color", content: "#edf1f6", media: "(prefers-color-scheme: light)" });
+    addHead("meta", { name: "theme-color", content: "#05070b", media: "(prefers-color-scheme: dark)" });
+    addHead("meta", { name: "apple-mobile-web-app-capable", content: "yes" });
+    addHead("meta", { name: "mobile-web-app-capable", content: "yes" });
+    addHead("meta", { name: "apple-mobile-web-app-title", content: "Kitchen Diary" });
+    addHead("meta", { name: "apple-mobile-web-app-status-bar-style", content: "default" });
+    addHead("link", { rel: "apple-touch-icon", href: "/icon-180.png" });
+    addHead("link", { rel: "icon", type: "image/png", href: "/icon-192.png" });
+    addHead("link", { rel: "manifest", href: "/manifest.webmanifest" });
+
+    // The section buttons act as tabs (they carry aria-selected), so give them tab roles.
+    document.querySelectorAll("nav.tabs .grp").forEach((g) => {
+      g.setAttribute("role", "tablist");
+      const label = g.querySelector(".label");
+      if (label) g.setAttribute("aria-label", label.textContent.trim());
+    });
+    document.querySelectorAll("nav.tabs button[data-tab]").forEach((b) => b.setAttribute("role", "tab"));
+
+    const adFile = document.getElementById("adFile");
+    if (adFile && !adFile.getAttribute("aria-label")) adFile.setAttribute("aria-label", "Choose an allergen PDF");
+
+    // Reading reports with Claude isn't available here, so the EHO upload panel only offers entry by hand.
+    const eho = document.getElementById("ehoUploadPanel");
+    if (eho) {
+      const h = eho.querySelector("h2");
+      if (h) h.textContent = "Record an inspection";
+      eho.querySelectorAll("p.note").forEach((p) => { p.hidden = true; });
+    }
+
+    // Tab bar: keep the chosen tab in view, and bring its section into view when the bar is pinned.
+    const nav = document.querySelector("nav.tabs");
+    if (nav) {
+      nav.addEventListener("click", (e) => {
+        const b = e.target.closest("button[data-tab]");
+        if (!b) return;
+        requestAnimationFrame(() => {
+          const nr = nav.getBoundingClientRect(), br = b.getBoundingClientRect();
+          if (nav.scrollWidth > nav.clientWidth) nav.scrollBy({ left: br.left + br.width / 2 - (nr.left + nr.width / 2), behavior: "smooth" });
+          const panel = document.querySelector(`[data-panel="${b.dataset.tab}"]`);
+          if (panel && panel.getBoundingClientRect().top < nr.bottom) {
+            window.scrollTo({ top: window.scrollY + panel.getBoundingClientRect().top - nr.bottom - 12, behavior: "smooth" });
+          }
+        });
+      });
+      const sel = nav.querySelector('button[aria-selected="true"]');
+      if (sel && nav.scrollWidth > nav.clientWidth) nav.scrollLeft = sel.offsetLeft - nav.clientWidth / 2 + sel.offsetWidth / 2;
+    }
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", polishPage);
+  else polishPage();
+
+  // Sign-off asks for a typed name; start it from the name we already know (the page remembers it after).
+  function prefillSignName(n) {
+    try { if (n && !localStorage.getItem("sfbb.signName")) localStorage.setItem("sfbb.signName", n); } catch (e) {}
+  }
+  prefillSignName(name);
 
   /* ---------- API calls ---------- */
 

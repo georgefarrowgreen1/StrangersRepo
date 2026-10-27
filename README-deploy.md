@@ -7,6 +7,8 @@ The site is one Cloudflare Worker serving the diary page unchanged, plus the API
 | `reference/kitchen-diary.html` | The page from Will's Claude diary. **Never edit it**; replace it when Will sends a new version. |
 | `scripts/build.mjs` | Builds `dist/` from the page, adding only the `noindex` meta tag and the `claude-shim.js` script tag. Runs automatically on every deploy. |
 | `public/claude-shim.js` | Provides `window.claude` (db, user, assets) on the website, the name prompt and the "Change name" link. |
+| `public/theme.css` | The Liquid Glass theme, loaded by the shim on top of the page's own styles. See `docs/ui-ux-audit.md`. |
+| `public/icon-*.png`, `public/manifest.webmanifest` | Home Screen icon and app settings. |
 | `src/` | The Worker: `access.ts` (access control and write rate limiting, in one place), `docs.ts` (db API), `assets.ts` (PDFs), `sync.ts` (sync API for Will's Claude), `schema.ts` (database tables, created automatically). |
 | `test/` | `api.test.mjs` (API and sync) and `e2e.test.mjs` (the real page in a browser). |
 
