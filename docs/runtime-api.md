@@ -73,7 +73,7 @@ profiles(ids: string[]): Promise<Record<string, {name: string}>>
 upload(file: Blob, opts?: {type?: string}): Promise<{id, url, sizeBytes, contentType}>
 delete(id: string): Promise<{deleted: boolean}>
 ```
-Store in R2 under a random 32-character hex id. Accept `application/pdf` only, 20 MB maximum (reject with `too_large` or `unsupported_type`). Serve at `GET /_blob/<id>` with the stored content type, `Content-Disposition: inline` and `X-Content-Type-Options: nosniff`. `url` = `"/_blob/" + id`.
+Store in Workers KV under a random 32-character hex id. Accept `application/pdf` only, 20 MB maximum (reject with `too_large` or `unsupported_type`). Serve at `GET /_blob/<id>` with the stored content type, `Content-Disposition: inline` and `X-Content-Type-Options: nosniff`. `url` = `"/_blob/" + id`.
 
 ## `sample`
 

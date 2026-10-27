@@ -1,0 +1,40 @@
+// The database schema. The Worker applies it itself (once per Worker instance) so a fresh deploy needs no
+// migration step. Every statement is idempotent. To change the schema later, append statements here
+// (for example ALTER TABLE ... ADD COLUMN guarded by a check of pragma_table_info).
+import { Env } from "./http";
+
+const SCHEMA = [
+  // Every diary document, stored by path (see docs/data-model.md and docs/sync.md).
+  `CREATE TABLE IF NOT EXISTS docs (
+    path        TEXT PRIMARY KEY,           -- e.g. 'sites/cafe/days/2026-10-27'
+    collection  TEXT NOT NULL,              -- e.g. 'sites/cafe/days'
+    doc_id      TEXT NOT NULL,              -- e.g. '2026-10-27'
+    data        TEXT,                       -- JSON; NULL when deleted
+    updated_at  INTEGER NOT NULL,           -- ms since epoch
+    source      TEXT NOT NULL,              -- 'web' (edited on the website) or 'claude' (written by sync)
+    deleted     INTEGER NOT NULL DEFAULT 0, -- tombstone, so the sync can see website deletions
+    claude_data TEXT,                       -- the JSON Claude last applied for this path (NULL = Claude had no doc)
+    seq         INTEGER NOT NULL DEFAULT 0, -- change counter used by the page's live polling
+    updated_by  TEXT                        -- 'web:<name>' or 'sync', for auditing
+  )`,
+  "CREATE INDEX IF NOT EXISTS docs_collection ON docs(collection, deleted)",
+  "CREATE INDEX IF NOT EXISTS docs_web_changes ON docs(source, updated_at)",
+  "CREATE INDEX IF NOT EXISTS docs_collection_seq ON docs(collection, seq)",
+  // Small key/value table: 'seq' (bumped on every write) and 'lastApplyAt'.
+  "CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v INTEGER NOT NULL)",
+  "INSERT OR IGNORE INTO meta (k, v) VALUES ('seq', 0), ('lastApplyAt', 0)",
+  // Per-IP write counters for rate limiting.
+  "CREATE TABLE IF NOT EXISTS rate_limits (ip TEXT NOT NULL, window INTEGER NOT NULL, n INTEGER NOT NULL, PRIMARY KEY (ip, window))",
+];
+
+let ready: Promise<unknown> | null = null;
+
+export function ensureSchema(env: Env): Promise<unknown> {
+  if (!ready) {
+    ready = env.DB.batch(SCHEMA.map((s) => env.DB.prepare(s))).catch((e) => {
+      ready = null; // retry on the next request
+      throw e;
+    });
+  }
+  return ready;
+}

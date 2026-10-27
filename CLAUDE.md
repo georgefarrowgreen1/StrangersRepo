@@ -20,7 +20,7 @@ Read this whole file, then `docs/data-model.md`, `docs/runtime-api.md` and `docs
 - `db`: backed by your Worker API and D1, same paths and document shapes. See `docs/runtime-api.md`.
 - `user`: the staff member using the page, identified by the name they enter (see Access below).
 - `sample`: return `null`. The page then hides the "convert with Claude" features, which can't work outside Claude.
-- `assets`: backed by R2, so allergen PDFs can be uploaded on the website. Serve them at `/_blob/<id>`, the path the page already uses.
+- `assets`: backed by Workers KV, so allergen PDFs can be uploaded on the website. Serve them at `/_blob/<id>`, the path the page already uses.
 
 Only two edits to the HTML are allowed, applied by a build step so the reference file stays pristine:
 1. Insert `<script src="/claude-shim.js"></script>` before the page's main `<script>`.
@@ -30,7 +30,7 @@ Only two edits to the HTML are allowed, applied by a build step so the reference
 
 - One **Cloudflare Worker** with static assets (Wrangler, TypeScript, no framework needed).
 - **D1** database `kitchen-diary`: one generic `docs` table holding every document by path. See `docs/data-model.md`.
-- **R2** bucket `kitchen-diary-files` for allergen PDFs.
+- **KV** namespace (binding `FILES`) for allergen PDFs. (KV rather than R2 so the free tier needs no card.) D1 and KV have no ids in `wrangler.jsonc`: Cloudflare provisions them on first deploy, and the Worker creates its own tables (`src/schema.ts`).
 - Secrets (set with `wrangler secret put`, never written to files or committed):
   - `SYNC_TOKEN`: random, 32+ bytes; generate it yourself and show it to the host once at the end so they can send it to Will.
 
@@ -51,7 +51,7 @@ Routes under `/api/sync/` require `Authorization: Bearer <SYNC_TOKEN>` (constant
 
 ## Build order
 
-1. Scaffold the Worker, D1 schema migration and R2 binding. Run locally with `wrangler dev`.
+1. Scaffold the Worker, D1 schema and KV binding. Run locally with `wrangler dev`.
 2. Write `claude-shim.js` and the db/assets API, following `docs/runtime-api.md` closely (especially `update`'s deep merge and the error codes).
 3. Name prompt, "Change name" control and write rate limiting.
 4. Sync endpoints, per `docs/sync.md`.
@@ -60,7 +60,7 @@ Routes under `/api/sync/` require `Authorization: Bearer <SYNC_TOKEN>` (constant
    - Two browser tabs: a change in one appears in the other within about 10 seconds (polling).
    - Sync: `GET /api/sync/changes?since=0` returns the web edits; `POST /api/sync/apply` overwrites a document and deletes another; `POST /api/sync/manifest` removes documents not in the list; all of them return 401 without the token.
    - The page loads without any login; the first visit asks for a name, and records show that name.
-6. Ask the host to run `wrangler login`. Create the D1 database and R2 bucket, apply migrations, set the `SYNC_TOKEN` secret and deploy.
+6. Deploy by connecting the GitHub repo in the Cloudflare dashboard (Workers Builds; see `README-deploy.md`), or with `wrangler login` and `wrangler deploy`. Set the `SYNC_TOKEN` secret.
 7. Connect the custom domain `strangers.georgefarrowgreen.com` to the Worker (Workers custom domain). The parent domain `georgefarrowgreen.com` must be a zone in the same Cloudflare account. If it isn't, stop and explain to the host what's needed. Ask before changing any DNS record.
 8. Check the live site: the page loads and saves without a login, `/api/sync/changes` with the token returns `[]`, and HTTPS is enforced.
 9. Tell the host: the site URL, that it is public until accounts are added, and the **sync token**, to send to Will privately. Remind them not to paste the token anywhere public.

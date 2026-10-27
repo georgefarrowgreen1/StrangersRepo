@@ -18,19 +18,12 @@
     "run_worker_first": true
   },
 
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "kitchen-diary",
-      // Replace with the id printed by `npx wrangler d1 create kitchen-diary`.
-      "database_id": "00000000-0000-0000-0000-000000000000",
-      "migrations_dir": "migrations"
-    }
-  ],
+  // No ids needed: on the first deploy Cloudflare creates the database and the PDF store automatically.
+  // The Worker creates its own tables on first use (src/schema.ts).
+  "d1_databases": [{ "binding": "DB", "database_name": "kitchen-diary" }],
 
-  "r2_buckets": [
-    { "binding": "FILES", "bucket_name": "kitchen-diary-files" }
-  ],
+  // Allergen PDFs (KV values can be up to 25 MB; uploads are capped at 20 MB).
+  "kv_namespaces": [{ "binding": "FILES" }],
 
   "vars": {
     // Write requests (saves, deletes, uploads) allowed per IP address per 15 minutes.
@@ -40,6 +33,10 @@
   // Custom domain. georgefarrowgreen.com must be a zone in the same Cloudflare account; on deploy,
   // Cloudflare creates the DNS record and certificate for this hostname.
   "routes": [{ "pattern": "strangers.georgefarrowgreen.com", "custom_domain": true }],
+
+  // Local dev rewrites requests to the route's hostname; keep them https so the Worker's
+  // http-to-https redirect doesn't loop.
+  "dev": { "upstream_protocol": "https" },
 
   "observability": { "enabled": true }
 }

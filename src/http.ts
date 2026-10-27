@@ -1,6 +1,6 @@
 export interface Env {
   DB: D1Database;
-  FILES: R2Bucket;
+  FILES: KVNamespace;
   ASSETS: Fetcher;
   SYNC_TOKEN?: string;
   WRITE_LIMIT_PER_15_MIN?: string;

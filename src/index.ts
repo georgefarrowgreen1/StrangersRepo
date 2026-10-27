@@ -4,6 +4,7 @@ import { authorize, limitWrites, requireName } from "./access";
 import { deleteAsset, serveBlob, uploadAsset } from "./assets";
 import { WRITE_OPS, handleDb } from "./docs";
 import { ApiError, Env, errorResponse, json } from "./http";
+import { ensureSchema } from "./schema";
 import { handleSync } from "./sync";
 
 export default {
@@ -36,6 +37,7 @@ async function route(req: Request, env: Env, ctx: ExecutionContext, url: URL): P
   const caller = await authorize(req, env, url);
   if (caller instanceof Response) return caller;
   const p = url.pathname;
+  if (p.startsWith("/api/") || p.startsWith("/_blob/")) await ensureSchema(env);
 
   if (p.startsWith("/api/sync/")) return handleSync(req, env, p.slice("/api/sync/".length), url);
 

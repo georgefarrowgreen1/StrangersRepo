@@ -1,5 +1,5 @@
 // Starts `wrangler dev` on a fresh local D1/R2 (in a temp dir) for the tests.
-import { spawn, execFileSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -21,9 +21,6 @@ function freePort() {
 
 export async function startServer({ writeLimit } = {}) {
   const state = mkdtempSync(join(tmpdir(), "kitchen-diary-test-"));
-  execFileSync(WRANGLER, ["d1", "migrations", "apply", "kitchen-diary", "--local", "--persist-to", state], {
-    cwd: ROOT, stdio: "pipe", env: { ...process.env, CI: "1" },
-  });
   const port = await freePort();
   const args = ["dev", "--local", "--port", String(port), "--ip", "127.0.0.1", "--persist-to", state,
     "--var", `SYNC_TOKEN:${SYNC_TOKEN}`, "--show-interactive-dev-session=false"];

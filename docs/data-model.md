@@ -73,7 +73,7 @@ The page writes these with nested `update`s such as `{temps:{u1:{am:{v:3.2,by,at
 
 **`allergens/<id>`**: `name, source, contains:[allergen names], notes, by, at, importedFrom?`
 
-**`allergenDocs/<id>`**: `title, note, fileName, assetId, size, by, at`. `assetId` points to a file in that platform's own storage (Claude's asset store, or R2 on the website), so these are **not synced** (see `sync.md`).
+**`allergenDocs/<id>`**: `title, note, fileName, assetId, size, by, at`. `assetId` points to a file in that platform's own storage (Claude's asset store, or KV on the website), so these are **not synced** (see `sync.md`).
 
 **`suppliers/<id>`**: `name, supplies, contact, phone, email, address, rating, notes, by, at`
 

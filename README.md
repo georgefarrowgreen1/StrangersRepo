@@ -10,26 +10,18 @@ It's written so that the person hosting it can hand the whole job to Claude Code
 
 ### What you'll need
 
-- [Claude Code](https://claude.com/claude-code) installed.
-- Node.js 20 or later.
-- Access to the Cloudflare account that will host the site, with permission to manage Workers, D1, R2 and DNS. The site runs at **strangers.georgefarrowgreen.com**, so the domain `georgefarrowgreen.com` must be managed in the same Cloudflare account that hosts the site. If its DNS is elsewhere, move it to Cloudflare first.
+- A free Cloudflare account. The site runs at **strangers.georgefarrowgreen.com**, so the domain `georgefarrowgreen.com` must be managed in the same Cloudflare account that hosts the site. If its DNS is elsewhere, move it to Cloudflare first.
 - Nothing secret from Will. For now the site is public (no login); accounts will be added later. You'll generate the sync token yourself during set-up.
 
 ### How to set it up
 
-The Worker is already built in this folder. **`README-deploy.md`** has the exact commands to run it locally, deploy it, connect the domain, and later redeploy, rotate the token and back up. You can follow it by hand, or hand it to Claude Code:
+The site is already built. Connect this GitHub repo to Cloudflare once, in the dashboard, and every push to `main` deploys it automatically. **`README-deploy.md`** has the five steps, plus how to update the page, change the token and back up.
 
-1. Unzip this folder somewhere on your computer.
-2. Open a terminal in the folder and run `claude`.
-3. Say: **"Read CLAUDE.md and set this project up."**
-
-Claude Code will build the site, ask you to log in to Cloudflare (`wrangler login`), create the database and storage, deploy it and connect the domain. It stops and asks before anything that costs money or touches DNS.
-
-At the end it gives you a **sync token**. Send that to Will privately: his Claude needs it to keep the two copies in step.
+During set-up you create a **sync token**. Send that to Will privately: his Claude needs it to keep the two copies in step.
 
 ### What it costs
 
-Everything here fits Cloudflare's free tier (Workers, D1, R2 and a custom domain) for a team this size.
+Everything here fits Cloudflare's free tier (Workers, D1, KV and a custom domain), with no card needed, for a team this size.
 
 ---
 
