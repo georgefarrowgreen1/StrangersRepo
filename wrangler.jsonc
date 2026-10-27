@@ -1,0 +1,44 @@
+// Cloudflare Worker config for the Strangers Coffee Kitchen Diary staff site.
+// See README-deploy.md for how to deploy, rotate secrets and back up.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "strangers-kitchen-diary",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": false,
+  "preview_urls": false,
+
+  // Builds dist/ from reference/kitchen-diary.html + public/ (runs before dev and deploy).
+  "build": { "command": "node scripts/build.mjs" },
+
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    // Every request goes through the Worker first, so access control lives in one place.
+    "run_worker_first": true
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "kitchen-diary",
+      // Replace with the id printed by `npx wrangler d1 create kitchen-diary`.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  "r2_buckets": [
+    { "binding": "FILES", "bucket_name": "kitchen-diary-files" }
+  ],
+
+  "vars": {
+    // Write requests (saves, deletes, uploads) allowed per IP address per 15 minutes.
+    "WRITE_LIMIT_PER_15_MIN": "600"
+  },
+
+  // Custom domain: uncomment once staffstrangerscoffee.com is a zone in this Cloudflare account.
+  // "routes": [{ "pattern": "staffstrangerscoffee.com", "custom_domain": true }],
+
+  "observability": { "enabled": true }
+}

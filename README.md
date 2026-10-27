@@ -17,6 +17,8 @@ It's written so that the person hosting it can hand the whole job to Claude Code
 
 ### How to set it up
 
+The Worker is already built in this folder. **`README-deploy.md`** has the exact commands to run it locally, deploy it, connect the domain, and later redeploy, rotate the token and back up. You can follow it by hand, or hand it to Claude Code:
+
 1. Unzip this folder somewhere on your computer.
 2. Open a terminal in the folder and run `claude`.
 3. Say: **"Read CLAUDE.md and set this project up."**
