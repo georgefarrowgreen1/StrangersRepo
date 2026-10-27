@@ -84,7 +84,7 @@ test("staff journey on the real page", async () => {
   assert.deepEqual(day.data.opening.items, { o1: true, o2: true });
 
   // Sign off the week with a name.
-  await page.click("[data-tab=week]");
+  await openSection(page, "week");
   await page.fill("#wkSignName", "Sam Patel");
   await page.locator("#wkSign button", { hasText: "Sign off" }).click();
   await page.locator("#wkSign", { hasText: "Signed by Sam Patel" }).waitFor();
@@ -92,7 +92,7 @@ test("staff journey on the real page", async () => {
   assert.equal(weeks.docs[0].data.signed.name, "Sam Patel");
 
   // Mark a cleaning job done.
-  await page.click("[data-tab=cleaning]");
+  await openSection(page, "cleaning");
   await page.locator(".task", { hasText: "Clean coffee machine" }).getByRole("button", { name: "Done" }).click();
   await page.locator(".task", { hasText: "by you" }).waitFor();
   const job = await api("get", { path: "sites/cafe/cleaning/job1" });
@@ -100,7 +100,7 @@ test("staff journey on the real page", async () => {
   assert.equal(job.data.log.length, 1);
 
   // Add an allergen item.
-  await page.click("[data-tab=allergens]");
+  await openSection(page, "allergens");
   await page.fill("#algName", "Almond croissant");
   await page.locator("#algChecks label", { hasText: /nuts/i }).first().click();
   await page.click("#algSave");
@@ -125,7 +125,7 @@ test("staff journey on the real page", async () => {
 
   // Records show names: switch to the Roastery, whose seeded day was ticked by "Seeder".
   await page.locator("#sites button", { hasText: "Roastery" }).click();
-  await page.click("[data-tab=day]");
+  await openSection(page, "day");
   await page.fill("#dayDate", "2026-10-01");
   await page.locator("#dayDate").dispatchEvent("change");
   await page.locator("#openBy", { hasText: "Seeder" }).waitFor();
@@ -137,13 +137,37 @@ test("staff journey on the real page", async () => {
   await page.locator("#who", { hasText: "Recording as Alex Brown" }).waitFor();
   assert.equal(await page.getByRole("dialog").count(), 0, "no prompt once a name is saved");
 
+  // Records and Management are pull-down menus; the trigger shows the current section.
+  await openSection(page, "suppliers");
+  await page.locator(".gl-trigger.on:visible", { hasText: "Suppliers" }).waitFor();
+  await page.locator(".gl-trigger.on:visible").focus();
+  await page.keyboard.press("ArrowDown");
+  assert.equal(await page.evaluate(() => document.activeElement.getAttribute("role")), "menuitemradio");
+  await page.keyboard.press("Escape");
+  assert.equal(await page.locator(".gl-pop:not([hidden])").count(), 0);
+
   // The Claude-only import features stay hidden.
-  await page.click("[data-tab=plans]");
+  await openSection(page, "plans");
   assert.equal(await page.locator("#plUploadPanel").isHidden(), true);
 
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+// Opens a section the way staff do: Diary sections are tabs; the rest are in the Records and
+// Management menus (claude-shim.js), with the page's own buttons hidden behind them.
+async function openSection(page, tab) {
+  const direct = page.locator(`nav.tabs button[data-tab=${tab}]`);
+  if (await direct.isVisible()) return direct.click();
+  const name = (await direct.textContent()).trim();
+  for (const trigger of await page.locator(".gl-trigger:visible").all()) {
+    await trigger.click();
+    const item = page.locator(".gl-pop:not([hidden]) .gl-item", { hasText: name });
+    if (await item.count()) return item.first().click();
+    await page.keyboard.press("Escape");
+  }
+  throw new Error(`No menu item for ${tab}`);
+}
 
 async function waitFor(fn, ms = 8000) {
   const end = Date.now() + ms;

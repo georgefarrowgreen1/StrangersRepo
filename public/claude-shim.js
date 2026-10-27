@@ -175,16 +175,154 @@
         if (!b) return;
         requestAnimationFrame(() => {
           const nr = nav.getBoundingClientRect(), br = b.getBoundingClientRect();
-          if (nav.scrollWidth > nav.clientWidth) nav.scrollBy({ left: br.left + br.width / 2 - (nr.left + nr.width / 2), behavior: "smooth" });
+          if (b.offsetParent && nav.scrollWidth > nav.clientWidth) nav.scrollBy({ left: br.left + br.width / 2 - (nr.left + nr.width / 2), behavior: "smooth" });
           const panel = document.querySelector(`[data-panel="${b.dataset.tab}"]`);
           if (panel && panel.getBoundingClientRect().top < nr.bottom) {
             window.scrollTo({ top: window.scrollY + panel.getBoundingClientRect().top - nr.bottom - 12, behavior: "smooth" });
           }
         });
       });
+      if (THEME) buildSectionMenus(nav);
       const sel = nav.querySelector('button[aria-selected="true"]');
-      if (sel && nav.scrollWidth > nav.clientWidth) nav.scrollLeft = sel.offsetLeft - nav.clientWidth / 2 + sel.offsetWidth / 2;
+      if (sel && sel.offsetParent && nav.scrollWidth > nav.clientWidth) nav.scrollLeft = sel.offsetLeft - nav.clientWidth / 2 + sel.offsetWidth / 2;
     }
+  }
+
+  /*
+   * Section menus: the first tab group (Diary) stays as tabs; the other groups (Records, Management)
+   * become pull-down menus, or one "More" menu on narrow screens. The page's own buttons stay in the
+   * DOM, hidden, and the menus simply click them, so the page's logic is untouched. If the tab bar
+   * isn't laid out as expected (a new page version), nothing is changed.
+   */
+  function buildSectionMenus(nav) {
+    const groups = [...nav.querySelectorAll(":scope > .grp")];
+    if (groups.length < 2 || groups.some((g) => !g.querySelector("button[data-tab]"))) return;
+    const later = groups.slice(1).map((g) => ({
+      name: (g.querySelector(".label") || {}).textContent?.trim() || "More",
+      tabs: [...g.querySelectorAll("button[data-tab]")],
+    }));
+
+    const veil = Object.assign(document.createElement("div"), { className: "gl-veil", hidden: true });
+    document.body.appendChild(veil);
+    const bar = Object.assign(document.createElement("div"), { className: "gl-menubar" });
+    const chevron = '<svg class="gl-chev" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    // Phones show the More menu as an iOS-style "…" button.
+    const dots = '<svg class="gl-dots" viewBox="0 0 20 20" aria-hidden="true"><circle cx="4" cy="10" r="1.8"/><circle cx="10" cy="10" r="1.8"/><circle cx="16" cy="10" r="1.8"/></svg>';
+    const menus = [];
+    let openMenu = null, nextId = 1;
+
+    function makeMenu(title, sets, cls) {
+      const trigger = Object.assign(document.createElement("button"), { type: "button", className: "gl-trigger " + cls });
+      const pop = Object.assign(document.createElement("div"), { className: "gl-pop", hidden: true, id: "gl-menu-" + nextId++ });
+      pop.setAttribute("role", "menu");
+      pop.setAttribute("aria-label", title);
+      trigger.setAttribute("aria-haspopup", "menu");
+      trigger.setAttribute("aria-expanded", "false");
+      trigger.setAttribute("aria-controls", pop.id);
+      document.body.appendChild(pop);
+      const m = { title, sets, trigger, pop };
+      trigger.addEventListener("click", () => (openMenu === m ? close() : open(m)));
+      trigger.addEventListener("keydown", (e) => {
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); open(m); }
+      });
+      pop.addEventListener("keydown", (e) => {
+        const items = [...pop.querySelectorAll('[role="menuitemradio"]')];
+        const i = items.indexOf(document.activeElement);
+        if (e.key === "ArrowDown") items[(i + 1) % items.length].focus();
+        else if (e.key === "ArrowUp") items[(i - 1 + items.length) % items.length].focus();
+        else if (e.key === "Home") items[0].focus();
+        else if (e.key === "End") items[items.length - 1].focus();
+        else if (e.key === "Escape") { close(); trigger.focus(); }
+        else if (e.key === "Tab") close();
+        else return;
+        if (e.key !== "Tab") e.preventDefault();
+      });
+      menus.push(m);
+      bar.appendChild(trigger);
+    }
+
+    function render(m) {
+      m.pop.replaceChildren();
+      for (const set of m.sets) {
+        const tabs = set.tabs.filter((b) => !b.hidden);
+        if (!tabs.length) continue;
+        const grp = document.createElement("div");
+        grp.setAttribute("role", "group");
+        grp.setAttribute("aria-label", set.name);
+        if (m.sets.length > 1) grp.appendChild(Object.assign(document.createElement("div"), { className: "gl-head", textContent: set.name }));
+        for (const b of tabs) {
+          const on = b.getAttribute("aria-selected") === "true";
+          const item = Object.assign(document.createElement("button"), { type: "button", className: "gl-item", textContent: b.textContent.trim() });
+          item.setAttribute("role", "menuitemradio");
+          item.setAttribute("aria-checked", String(on));
+          item.tabIndex = -1;
+          item.addEventListener("click", () => { close(); b.click(); m.trigger.focus({ preventScroll: true }); });
+          grp.appendChild(item);
+        }
+        m.pop.appendChild(grp);
+      }
+    }
+
+    function sheetMode() { return window.innerWidth <= 600; }
+
+    function open(m) {
+      close();
+      render(m);
+      openMenu = m;
+      m.trigger.setAttribute("aria-expanded", "true");
+      const sheet = sheetMode();
+      m.pop.classList.toggle("sheet", sheet);
+      veil.hidden = !sheet;
+      m.pop.hidden = false;
+      if (!sheet) {
+        const r = m.trigger.getBoundingClientRect(), w = m.pop.offsetWidth;
+        m.pop.style.top = r.bottom + 8 + "px";
+        m.pop.style.left = Math.max(12, Math.min(r.left, window.innerWidth - w - 12)) + "px";
+      } else {
+        m.pop.style.top = m.pop.style.left = "";
+      }
+      (m.pop.querySelector('[aria-checked="true"]') || m.pop.querySelector(".gl-item"))?.focus({ preventScroll: true });
+    }
+
+    function close() {
+      if (!openMenu) return;
+      openMenu.pop.hidden = true;
+      openMenu.trigger.setAttribute("aria-expanded", "false");
+      veil.hidden = true;
+      openMenu = null;
+    }
+
+    // The trigger shows the current section when it's inside that menu, and hides if the site has
+    // switched off every section in it.
+    function update() {
+      for (const m of menus) {
+        const tabs = m.sets.flatMap((s) => s.tabs);
+        const active = tabs.find((b) => b.getAttribute("aria-selected") === "true");
+        m.trigger.innerHTML = "";
+        m.trigger.append(Object.assign(document.createElement("span"), { textContent: active ? active.textContent.trim() : m.title }));
+        m.trigger.insertAdjacentHTML("beforeend", chevron);
+        if (m.trigger.classList.contains("more")) m.trigger.insertAdjacentHTML("beforeend", dots);
+        m.trigger.classList.toggle("on", !!active);
+        const none = tabs.every((b) => b.hidden);
+        if (m.trigger.hidden !== none) m.trigger.hidden = none; // only on change: this runs from a MutationObserver
+        m.trigger.setAttribute("aria-label", active ? `${m.title}: ${active.textContent.trim()}` : m.title);
+      }
+    }
+
+    for (const set of later) makeMenu(set.name, [set], "split");
+    makeMenu("More", later, "more");
+    groups.slice(1).forEach((g) => { g.hidden = true; });
+    groups[0].after(bar);
+    nav.classList.add("gl-menus");
+    update();
+    new MutationObserver(update).observe(nav, { subtree: true, attributes: true, attributeFilter: ["aria-selected", "hidden"] });
+
+    veil.addEventListener("click", close);
+    document.addEventListener("pointerdown", (e) => {
+      if (openMenu && !openMenu.pop.contains(e.target) && !openMenu.trigger.contains(e.target)) close();
+    });
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", () => { if (openMenu && !sheetMode()) close(); }, { passive: true });
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", polishPage);
   else polishPage();
