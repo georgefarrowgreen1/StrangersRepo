@@ -54,26 +54,29 @@
 
   /* ---------- people ---------- */
 
+  const initials = (n) => String(n || "?").split(/\s+/).filter(Boolean).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+  const chev = () => { const s = document.createElementNS("http://www.w3.org/2000/svg", "svg"); s.setAttribute("viewBox", "0 0 24 24"); s.setAttribute("class", "i"); s.innerHTML = '<path d="M9 6l6 6-6 6"/>'; return el("span", { class: "chev" }, s); };
+
   function render() {
     const box = $("#people");
     box.replaceChildren();
     const active = people.filter((p) => p.active).length;
     $("#pplCount").textContent = `${active} active`;
     for (const p of people) {
-      const isMe = p.id === me.id;
-      const row = el("div", { class: "person" + (p.active ? "" : " off") },
-        el("div", { class: "who" },
-          el("strong", { text: p.name + (isMe ? " (you)" : "") }),
-          el("span", { class: "note", text: "Username: " + p.username }),
-          el("div", { class: "meta" },
+      const isMe = p.id === me.id, open = editing === p.id;
+      const row = el("div", { class: "person" + (p.active ? "" : " off") + (open ? " open" : "") },
+        el("button", { class: "prow", type: "button", "aria-expanded": String(open), on: { click: () => { editing = open ? null : p.id; render(); } } },
+          el("span", { class: "avatar", text: initials(p.name) }),
+          el("span", { class: "t" },
+            el("b", { text: p.name + (isMe ? " (you)" : "") }),
+            el("span", { class: "s", text: `${p.username} · ${p.lastLoginAt ? "signed in " + when(p.lastLoginAt) : "never signed in"}` })),
+          el("span", { class: "pills" },
             el("span", { class: "pill" + (p.role === "admin" ? " ok" : p.role === "manager" ? " warn" : ""), text: ROLE[p.role] }),
             !p.active ? el("span", { class: "pill bad", text: "Switched off" }) : null,
-            p.locked ? el("span", { class: "pill bad", text: "Locked: too many wrong passwords" }) : null,
-            p.active && p.mustChange ? el("span", { class: "pill warn", text: "Temporary password" }) : null,
-            el("span", { text: p.lastLoginAt ? `Last signed in ${when(p.lastLoginAt)}` : "Never signed in" }))),
-        el("div", { class: "row" },
-          el("button", { class: "btn ghost sm", type: "button", "aria-expanded": String(editing === p.id), on: { click: () => { editing = editing === p.id ? null : p.id; render(); } } }, editing === p.id ? "Close" : "Manage")));
-      if (editing === p.id) row.appendChild(editor(p, isMe));
+            p.locked ? el("span", { class: "pill bad", text: "Locked" }) : null,
+            p.active && p.mustChange ? el("span", { class: "pill warn", text: "Temporary password" }) : null),
+          chev()));
+      if (open) row.appendChild(editor(p, isMe));
       box.appendChild(row);
     }
   }
@@ -104,6 +107,8 @@
     }
 
     return el("div", { class: "editor" },
+      p.locked ? el("p", { class: "err", text: "Locked after too many wrong passwords. It unlocks by itself after 10 minutes, or unlock it now below." }) : null,
+      el("h3", { text: "Details" }),
       el("div", { class: "fields" },
         el("div", { class: "field" }, el("label", { for: "ename", text: "Name (shown on records)" }), name),
         el("div", { class: "field" }, el("label", { for: "euser", text: "Username" }), username),
@@ -118,6 +123,7 @@
           change(body, "Saved.");
         } } }, "Save changes")),
       el("p", { class: "note", text: "Renaming someone doesn't change the name on records they've already made." }),
+      el("h3", { text: "Password and access" }),
       el("div", { class: "fields" },
         el("div", { class: "field" }, el("label", { for: "epw", text: "Set a temporary password" }), pw)),
       el("div", { class: "row" },
@@ -142,6 +148,14 @@
     if (!userEdited) $("#auser").value = $("#aname").value.toLowerCase().normalize("NFKD").replace(/[^a-z0-9 .-]/g, "").trim().replace(/\s+/g, ".").slice(0, 32);
   });
 
+  function addPanel(open) {
+    $("#addPanel").hidden = !open;
+    $("#addOpen").hidden = open;
+    if (open) { $("#newPw").hidden = true; $("#aname").focus(); }
+  }
+  $("#addOpen").addEventListener("click", () => addPanel(true));
+  $("#addClose").addEventListener("click", () => addPanel(false));
+
   $("#add").addEventListener("submit", async (e) => {
     e.preventDefault();
     const err = $("#addErr");
@@ -162,6 +176,8 @@
       userEdited = false;
       $("#apw").value = "";
       $("#arole").value = "staff";
+      addPanel(false);
+      $("#newPw").hidden = false;
     } catch (x) {
       err.textContent = x.message;
     }
@@ -174,7 +190,7 @@
     if (!user) { location.replace("/signin?next=/admin"); return; }
     if (user.role !== "admin") { location.replace("/"); return; }
     me = user;
-    $("#me").textContent = `Signed in as ${user.name}`;
+    $("#me").textContent = `Admin · signed in as ${user.name}`;
     people = (await api("GET", "/api/admin/users")).users;
     render();
   })().catch((e) => { $("#people").textContent = e.message; });

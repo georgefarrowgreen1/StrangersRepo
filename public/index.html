@@ -45,6 +45,7 @@
   <div class="pagehead" id="pagehead">
     <button class="back" type="button" id="backBtn" hidden></button>
     <div class="trow"><div class="ptitle"><h1 id="pageTitle">Today</h1><p id="pageSub"></p></div><div id="pageAction">
+      <button class="addbtn" type="button" id="addBtn" hidden></button>
       <div class="headctl" id="dayCtl" hidden>
         <button class="iconbtn" type="button" id="dayPrev" aria-label="Previous day"></button>
         <input type="date" id="dayDate" aria-label="Diary date">
@@ -124,72 +125,73 @@
 
   <!-- HISTORY -->
   <div data-panel="history" class="stack" hidden>
-    <section class="panel">
-      <div class="row spread"><h2>Last 28 days</h2><span class="pill" id="histScore"></span></div>
-      <div class="legend"><span><i style="background:var(--ok)"></i>Done</span><span><i style="background:var(--warn)"></i>Part done</span><span><i style="background:var(--bad)"></i>Temperature out of range</span><span><i style="background:var(--line)"></i>Not recorded</span><span>Bars: opening · temps · closing · signed</span></div>
-      <div class="strip" id="strip"></div>
-      <p class="note">Tap a day to open its diary page.</p>
+    <div class="stat3" id="histStats"></div>
+    <section class="cal glass">
+      <div class="calg" id="strip"></div>
+      <div class="legend"><span><i class="ok"></i>Signed off</span><span><i class="part"></i>Part done</span><span><i class="bad"></i>Missed</span><span><i class="closed"></i>Closed</span></div>
     </section>
-    <section class="panel">
-      <h2>Exceptions</h2>
-      <div class="scroll"><table id="excTable"><thead><tr><th>Date</th><th>What</th></tr></thead><tbody></tbody></table></div>
-    </section>
+    <div class="label">Exceptions</div>
+    <div class="list glass" id="excList"></div>
   </div>
 
   <!-- EXTRA CHECKS -->
   <div data-panel="extras" class="stack" hidden>
-    <section class="panel">
-      <div class="row spread"><h2>Extra checks</h2><span class="pill" id="xPill"></span></div>
-      <p class="note">Regular checks that aren't part of opening or closing: probe thermometer accuracy, door seals, water filters. Tap Done when a check is complete and add a note if anything needed fixing.</p>
-      <div class="tasks" id="xList"></div>
-    </section>
-    <section class="panel" id="xFormPanel">
+    <section class="panel formpanel" id="xFormPanel" hidden>
       <h2 id="xFormTitle">Add an extra check</h2>
       <div id="xForm"></div>
     </section>
+    <p class="note intro">Regular checks that aren't part of opening or closing: probe thermometer accuracy, door seals, water filters. Tap Done when one is complete; tap a check for its method, history and a note.</p>
+    <div class="stack tight" id="xList"></div>
   </div>
 
   <!-- CLEANING -->
   <div data-panel="cleaning" class="stack" hidden>
-    <section class="panel">
-      <div class="row spread"><h2>Cleaning schedule</h2><span class="pill" id="kPill"></span></div>
-      <p class="note">What gets cleaned, how, how often and by whom. Use a food-safe sanitiser that meets BS EN 1276 or BS EN 13697 and follow its contact time. Mark each task done as it's completed.</p>
-      <div class="tasks" id="kList"></div>
-    </section>
-    <section class="panel" id="kFormPanel">
+    <section class="panel formpanel" id="kFormPanel" hidden>
       <h2 id="kFormTitle">Add a cleaning task</h2>
       <div id="kForm"></div>
     </section>
+    <p class="note intro">Use a food-safe sanitiser that meets BS EN 1276 or BS EN 13697 and follow its contact time. Tap Done as each job is finished; tap a job for its method, history and a note.</p>
+    <div class="stack tight" id="kList"></div>
   </div>
 
   <!-- PROVE IT -->
   <div data-panel="prove" class="stack" hidden>
     <section class="panel" id="pFormPanel">
-      <h2>Prove it: record a check</h2>
-      <p class="note">Use this to prove your safe methods work: probe the core temperature of a dish, time how long food takes to cool, check a delivery, or test your probe thermometer. Record what you did if a result fails.</p>
+      <h2>Record a check</h2>
+      <div class="methods" id="pMethods" role="radiogroup" aria-label="What are you proving?"></div>
+      <select id="pMethod" hidden aria-hidden="true"></select>
+      <p class="by" id="pHint"></p>
       <div class="fields">
-        <div class="field"><label class="label" for="pDate">Date</label><input type="date" id="pDate"></div>
-        <div class="field"><label class="label" for="pMethod">What are you proving?</label><select id="pMethod"></select></div>
         <div class="field"><label class="label" for="pFood">Food, dish or equipment</label><input type="text" id="pFood" placeholder="e.g. Ham &amp; cheese toastie"></div>
         <div class="field"><label class="label" for="pReading" id="pReadLbl">Reading (°C)</label><input type="number" step="0.1" inputmode="decimal" id="pReading"></div>
         <div class="field" id="pManualWrap" hidden><label class="label" for="pManual">Result</label><select id="pManual"><option value="pass">Pass</option><option value="fail">Fail</option></select></div>
-        <div class="field wide"><span class="by" id="pHint"></span></div>
+        <div class="field"><label class="label" for="pDate">Date</label><input type="date" id="pDate"></div>
         <div class="field wide"><label class="label" for="pAction">Notes or action taken</label><textarea id="pAction" placeholder="e.g. Below 75°C first time, cooked for 2 more minutes, rechecked at 79°C."></textarea></div>
       </div>
+      <div class="result" id="pResult" hidden></div>
       <div class="row"><button class="btn" id="pSave">Save record</button><span class="by" id="pMsg"></span></div>
     </section>
-    <section class="panel">
-      <div class="row spread"><h2>Prove it records</h2><span class="pill" id="pPill"></span></div>
-      <div id="pList"></div>
-    </section>
+    <div class="row spread"><div class="label">Records</div><span class="pill" id="pPill"></span></div>
+    <div class="list glass" id="pList"></div>
   </div>
 
   <!-- ALLERGENS -->
   <div data-panel="allergens" class="stack" hidden>
-    <section class="panel">
-      <div class="row spread"><h2>Allergen information (PDF)</h2><span class="pill" id="adPill"></span></div>
-      <p class="note">Upload this site's allergen matrix or menu allergen sheet as a PDF so staff can open it here. The chart below is kept separately and can still be edited by hand.</p>
-      <div id="adList"></div>
+    <section class="panel formpanel" id="algFormPanel" hidden>
+      <h2 id="algFormTitle">Add a menu item</h2>
+      <div class="fields">
+        <div class="field"><label class="label" for="algName">Item name</label><input type="text" id="algName" placeholder="e.g. Banana bread slice"></div>
+        <div class="field"><label class="label" for="algSupplier">Supplier or recipe source</label><input type="text" id="algSupplier" placeholder="e.g. Made in-house"></div>
+      </div>
+      <div class="label">Contains</div>
+      <div class="alg" id="algChecks"></div>
+      <div class="field"><label class="label" for="algNotes">Notes (may contain, swaps, cross-contact)</label><textarea id="algNotes" placeholder="e.g. Made in a kitchen that handles nuts. Oat milk swap removes milk."></textarea></div>
+      <div class="row"><button class="btn" id="algSave">Save item</button><button class="btn ghost" id="algCancel" hidden>Cancel edit</button><button class="btn ghost danger" id="algDelete" hidden>Remove item</button><span class="by" id="algConfirm"></span></div>
+    </section>
+    <div class="stack tight" id="adList"></div>
+    <details class="panel adup" id="adUpWrap">
+      <summary>Upload a new allergen PDF</summary>
+      <p class="note">This site's allergen matrix or menu allergen sheet, so staff can open it here. The item list below is kept separately.</p>
       <div id="adUpload" class="stack" style="gap:10px">
         <div class="drop" id="adDrop">
           <strong id="adDropText">Drop a PDF here, or choose one</strong>
@@ -203,21 +205,13 @@
         <div class="row"><button class="btn" id="adSave" disabled>Upload PDF</button><span class="by" id="adMsg" role="status"></span></div>
       </div>
       <p class="note" id="adNoUpload" hidden>Uploading PDFs needs edit access to this diary. You can still open the PDFs above.</p>
-    </section>
-    <section class="panel">
+    </details>
+    <div class="search"><input type="search" id="algSearch" placeholder="Search menu items" aria-label="Search menu items"></div>
+    <div class="chiprow" id="algFilter" aria-label="Show items free from"></div>
+    <div class="list glass" id="algList"></div>
+    <section class="panel onlywide">
       <div class="row spread"><h2>Allergen chart</h2><span class="note">The 14 allergens UK law requires you to declare</span></div>
       <div id="algMatrix"></div>
-    </section>
-    <section class="panel" id="algFormPanel">
-      <h2 id="algFormTitle">Add a menu item</h2>
-      <div class="fields">
-        <div class="field"><label class="label" for="algName">Item name</label><input type="text" id="algName" placeholder="e.g. Banana bread slice"></div>
-        <div class="field"><label class="label" for="algSupplier">Supplier or recipe source</label><input type="text" id="algSupplier" placeholder="e.g. Made in-house"></div>
-      </div>
-      <div class="label">Contains</div>
-      <div class="alg" id="algChecks"></div>
-      <div class="field"><label class="label" for="algNotes">Notes (may contain, swaps, cross-contact)</label><textarea id="algNotes" placeholder="e.g. Made in a kitchen that handles nuts. Oat milk swap removes milk."></textarea></div>
-      <div class="row"><button class="btn" id="algSave">Save item</button><button class="btn ghost" id="algCancel" hidden>Cancel edit</button><button class="btn ghost danger" id="algDelete" hidden>Remove item</button><span class="by" id="algConfirm"></span></div>
     </section>
   </div>
 
@@ -226,7 +220,7 @@
     <div id="planListView" class="stack">
       <section class="panel">
         <div class="row spread"><h2>HACCP plans &amp; risk assessments</h2><span class="pill" id="plPill"></span></div>
-        <p class="note">Upload an existing HACCP plan or risk assessment and Claude turns it into an editable table. Or start a new one from a template.</p>
+        <p class="note">Your HACCP plan and risk assessments as editable tables. Start a new one from a template.</p>
         <div class="row" id="plNewRow"><button class="btn ghost" id="plNewHaccp">New HACCP plan</button><button class="btn ghost" id="plNewRisk">New risk assessment</button></div>
         <div id="plList"></div>
       </section>
@@ -253,15 +247,14 @@
     <div id="ehoListView" class="stack">
       <div id="ehoLatest" class="stack"></div>
       <section class="panel" id="ehoUploadPanel" hidden>
-        <h2>Upload an inspection report</h2>
-        <p class="note">Upload the report or letter from your Environmental Health Officer. Claude pulls out the inspection date, your rating and scores, and every issue the inspector raised, so you can tick each one off as it's fixed.</p>
+        <h2>Record an inspection</h2>
+        <p class="note">From the report or letter your Environmental Health Officer sent: the inspection date, your rating and scores, and every issue the inspector raised, so you can tick each one off as it's fixed.</p>
         <div class="drop" id="ehoDrop">
           <strong id="ehoDropText">Drop a file here, or choose one</strong>
           <span class="by">PDF, Word (.docx), text, or a photo of the paper report</span>
           <input type="file" id="ehoFile" accept=".pdf,.docx,.doc,.txt,.md,image/jpeg,image/png,image/webp,image/gif">
         </div>
-        <div class="row"><button class="btn" id="ehoConvert" disabled>Read report with Claude</button><button class="btn ghost" id="ehoStop" hidden>Stop</button><button class="btn ghost" id="ehoManual">Enter it by hand instead</button><span class="by" id="ehoStatus" role="status"></span></div>
-        <p class="note">This uses your Claude account. Only the extracted details are saved, not the original file.</p>
+        <div class="row"><button class="btn" id="ehoConvert" disabled>Read report with Claude</button><button class="btn ghost" id="ehoStop" hidden>Stop</button><button class="btn" id="ehoManual">Enter inspection</button><span class="by" id="ehoStatus" role="status"></span></div>
       </section>
       <section class="panel" id="ehoPastPanel" hidden>
         <h2>Earlier inspections</h2>
@@ -276,7 +269,7 @@
     <div id="obListView" class="stack">
       <section class="panel">
         <div class="row spread"><h2>Onboarding documents</h2><span class="pill" id="obPill"></span></div>
-        <p class="note">Staff handbooks, induction checklists, policies and procedures. Upload one and Claude lays it out as a clean, editable document, or start from a template.</p>
+        <p class="note">Staff handbooks, induction checklists, policies and procedures. Start from a template and edit it here.</p>
         <div class="row" id="obNewRow"><button class="btn ghost" id="obNewInduction">New induction checklist</button><button class="btn ghost" id="obNewBlank">New blank document</button></div>
         <div id="obList"></div>
       </section>
@@ -299,42 +292,31 @@
 
   <!-- SUPPLIERS -->
   <div data-panel="suppliers" class="stack" hidden>
-    <section class="panel">
-      <div class="row spread"><h2>Supplier list</h2><span class="pill" id="sPill"></span></div>
-      <p class="note">Everyone who supplies you with food or drink. An inspector may ask to see this so food can be traced back if there's a recall.</p>
-      <div id="sList"></div>
-    </section>
-    <section class="panel" id="sFormPanel">
+    <section class="panel formpanel" id="sFormPanel" hidden>
       <h2 id="sFormTitle">Add a supplier</h2>
       <div id="sForm"></div>
     </section>
+    <p class="note intro">Everyone who supplies you with food or drink. An inspector may ask to see this so food can be traced back if there's a recall.</p>
+    <div class="list glass" id="sList"></div>
   </div>
 
   <!-- CONTACTS -->
   <div data-panel="contacts" class="stack" hidden>
-    <section class="panel">
-      <div class="row spread"><h2>Contact list</h2><span class="pill" id="cPill"></span></div>
-      <p class="note">Who to call when something goes wrong: a fridge breaks down, you spot pests, the water goes off, or you need advice from your local council.</p>
-      <div id="cList"></div>
-    </section>
-    <section class="panel" id="cSuggestPanel">
-      <h3>Suggested contacts to add</h3>
-      <div class="row" id="cSuggest" style="gap:6px"></div>
-    </section>
-    <section class="panel" id="cFormPanel">
+    <section class="panel formpanel" id="cFormPanel" hidden>
       <h2 id="cFormTitle">Add a contact</h2>
       <div id="cForm"></div>
+    </section>
+    <p class="note intro">Who to call when something goes wrong: a fridge breaks down, you spot pests, the water goes off, or you need advice from the council.</p>
+    <div class="stack tight" id="cList"></div>
+    <section class="panel" id="cSuggestPanel" hidden>
+      <h3>Suggested contacts to add</h3>
+      <div class="row" id="cSuggest" style="gap:6px;flex-wrap:wrap"></div>
     </section>
   </div>
 
   <!-- STAFF -->
   <div data-panel="staff" class="stack" hidden>
-    <section class="panel">
-      <div class="row spread"><h2>Staff training record</h2><span class="pill" id="tPill"></span></div>
-      <p class="note">Record the date each person was trained on each safe method. Train new staff before they handle food, and refresh when methods change.</p>
-      <div id="tMatrix"></div>
-    </section>
-    <section class="panel" id="tFormPanel">
+    <section class="panel formpanel" id="tFormPanel" hidden>
       <h2 id="tFormTitle">Add a staff member</h2>
       <div class="fields">
         <div class="field"><label class="label" for="tName">Name</label><input type="text" id="tName" placeholder="e.g. Sam Patel"></div>
@@ -349,6 +331,10 @@
       <p class="note">The record is saved at every ticked site, replacing that person's record there. Unticking a site doesn't remove them from it; use Remove person on that site's Staff training tab.</p>
       <div class="row"><button class="btn" id="tSave">Save training record</button><button class="btn ghost" id="tCancel" hidden>Cancel edit</button><button class="btn ghost danger" id="tDelete" hidden>Remove person</button><span class="by" id="tMsg"></span></div>
     </section>
+    <p class="note intro">The date each person was trained on each safe method. Train new staff before they handle food, and refresh when methods change.</p>
+    <div class="stat3" id="tStats"></div>
+    <div class="list glass" id="tList"></div>
+    <section class="panel onlywide"><h2>Training chart</h2><div id="tMatrix"></div></section>
   </div>
 
   <!-- REVIEW -->
@@ -356,7 +342,7 @@
     <section class="panel">
       <div class="row spread"><h2>4-weekly review</h2><span class="pill" id="revDue"></span></div>
       <p class="note">Every four weeks, look back over the diary and answer these questions. If anything has changed, update your safe methods.</p>
-      <div class="row" id="revSummary"></div>
+      <div class="sumlist" id="revSummary"></div>
       <div id="revQs"></div>
       <div class="field"><label class="label" for="revNotes">Actions taken</label><textarea id="revNotes" placeholder="e.g. Updated cooling method for soup. Trained Sam on probe use."></textarea></div>
       <div class="row"><button class="btn" id="revSave">Sign and save review</button><span class="by" id="revMsg"></span></div>

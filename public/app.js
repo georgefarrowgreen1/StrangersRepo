@@ -74,7 +74,7 @@ const S={site:(()=>{try{const s=localStorage.getItem("sfbb.site");return SITES.s
   cfg:null,sum:{},subs:[],allergenDocs:[],assets:null,shared:null,
   db:null,user:null,me:null,canWrite:true,settings:DEFAULT_SETTINGS,days:{},weeks:{},allergens:[],reviews:[],extras:[],cleaning:[],suppliers:[],contacts:[],plans:[],plan:null,onboarding:[],onb:null,inspections:[],insp:null,sample:undefined,staff:[],prove:[],
   date:today(),week:monday(today()),editAlg:null,editStaff:null,names:{},rev:{}};
-S.role="staff";S.myName="";
+S.role="";S.myName="";
 const ro=()=>!S.canWrite||!S.db;
 
 /* ---------- sites & per-site paths ---------- */
@@ -183,6 +183,44 @@ function checklist(box,checks,items,prefix,onToggle){
     box.append(el("li",{},el("label",{for:id},cb,el("span",{text:c.t}))));
   }
   if(!checks.length)box.append(el("li",{class:"empty",text:"No checks set up. Add them in Setup."}));
+}
+
+/* ---------- list rows and add / edit forms ---------- */
+// A list row that opens in place to show more: details, history and actions.
+const xOpen={};
+function xrow(key,{lead,title,sub,right,details,cls}){
+  const open=!!xOpen[key]&&!!details;
+  const more=details?el("div",{class:"xmore",hidden:!open},...details):null;
+  const main=el("button",{class:"xmain",type:"button","aria-expanded":details?String(open):null,disabled:!details,onclick:()=>{
+    xOpen[key]=!xOpen[key];more.hidden=!xOpen[key];main.setAttribute("aria-expanded",String(xOpen[key]));row.classList.toggle("open",xOpen[key])}},
+    lead||null,el("span",{class:"t"},el("b",{text:title}),sub?el("span",{class:"s",text:sub}):null));
+  const row=el("div",{class:"xrow"+(open?" open":"")+(cls?" "+cls:"")},el("div",{class:"xhead"},main,...(right||[]).filter(Boolean)),more);
+  return row;
+}
+const xfacts=pairs=>el("dl",{class:"facts"},...pairs.filter(p=>p[1]).flatMap(([k,v])=>[el("dt",{text:k}),el("dd",{},v)]));
+const telLink=n=>el("a",{href:"tel:"+String(n).replace(/[^\d+]/g,""),class:"mono"},n);
+const callBtn=(n,label)=>n?el("a",{class:"call",href:"tel:"+String(n).replace(/[^\d+]/g,""),"aria-label":label||"Call "+n,title:"Call "+n},svgi(ICON.contacts)):null;
+
+// List sections keep their form closed until someone taps Add (in the page heading) or Edit on an item.
+const FORMS={
+  extras:{panel:"#xFormPanel",add:"Add check",reset:()=>editTask("extras",null)},
+  cleaning:{panel:"#kFormPanel",add:"Add job",reset:()=>editTask("cleaning",null)},
+  allergens:{panel:"#algFormPanel",add:"Add item",reset:()=>editAlg(null)},
+  suppliers:{panel:"#sFormPanel",add:"Add supplier",reset:()=>editSupplier(null)},
+  contacts:{panel:"#cFormPanel",add:"Add contact",reset:()=>editContact(null)},
+  staff:{panel:"#tFormPanel",add:"Add person",reset:()=>editStaff(null)}};
+const formOpen={};
+function setForm(tab,open){
+  const f=FORMS[tab],p=$(f.panel);formOpen[tab]=!!open;p.hidden=ro()||!open;
+  if(!p._x){p._x=el("button",{class:"closex",type:"button","aria-label":"Close",onclick:()=>{f.reset();setForm(tab,false)}},"Cancel");p.prepend(p._x)}
+  if(open&&!p.hidden){p.scrollIntoView({behavior:"smooth",block:"start"});const i=p.querySelector("input[type=text],input:not([type])");if(i)i.focus({preventScroll:true})}
+  renderAddBtn();
+}
+function renderAddBtn(){
+  const f=FORMS[S.tab],b=$("#addBtn");if(!b)return;
+  b.hidden=!f||ro()||!!formOpen[S.tab];if(b.hidden)return;
+  b.replaceChildren(svgi(ICON.plus),el("span",{text:f.add}));
+  b.onclick=()=>{f.reset();setForm(S.tab,true)};
 }
 
 /* ---------- section cards (Today and Week) ---------- */
@@ -371,31 +409,34 @@ function renderWeek(){
 
 /* ---------- history ---------- */
 function renderHistory(){
-  const strip=$("#strip");strip.replaceChildren();
-  const end=today();let complete=0,trading=0;const exc=[];
-  for(let i=27;i>=0;i--){
-    const date=addDays(end,-i);const d=S.days[date];const st=dayStatus(d);const shut=isClosed(date)&&!st.any;
-    if(!shut){trading++;if(st.complete)complete++}
-    const bars=el("div",{class:"bars"});
-    for(const k of["open","temps","close","signed"])bars.append(el("i",{class:st[k]}));
+  const grid=$("#strip");grid.replaceChildren();
+  const end=today(),first=addDays(end,-27),start=monday(first);
+  let complete=0,trading=0,missed=0,hot=0;const exc=[];
+  for(const h of["M","T","W","T","F","S","S"])grid.append(el("span",{class:"h",text:h}));
+  for(let date=start;date<=addDays(monday(end),6);date=addDays(date,1)){
     const dd=parse(date);
-    strip.append(el("button",{class:"day"+(date===end?" today":"")+(shut?" closed":""),title:nice(date)+(shut?" (closed)":""),onclick:()=>{S.date=date;show("day");renderDay()}},
-      el("span",{class:"d",text:dd.toLocaleDateString("en-GB",{weekday:"narrow"})+" "+dd.getDate()}),bars));
-    if(d&&d.temps)for(const u of S.settings.units){const r=d.temps[u.id]&&d.temps[u.id].am;if(r&&tempState(u.kind,r.v)==="bad")exc.push([date,`${u.name} reading ${r.v}°C`])}
-    if(date<end&&!st.complete&&!shut)exc.push([date,st.any?"Diary not completed":"No diary entry"]);
-    if(d&&d.problems&&d.problems.text)exc.push([date,"Note: "+d.problems.text]);
+    if(date<first||date>end){grid.append(el("span",{class:"cd out",text:String(dd.getDate())}));continue}
+    const d=S.days[date],st=dayStatus(d),shut=isClosed(date)&&!st.any;
+    if(!shut){trading++;if(st.complete)complete++;else if(date<end&&!st.any)missed++}
+    const cls=shut?"closed":st.complete||(d&&d.signed)?"ok":st.any?"part":date<end?"bad":"";
+    grid.append(el("button",{class:"cd "+cls+(date===end?" today":"")+(st.issue?" hot":""),type:"button",title:nice(date),"aria-label":nice(date),onclick:()=>goDay(date)},String(dd.getDate())));
+    if(d&&d.temps)for(const u of S.settings.units){const r=d.temps[u.id]&&d.temps[u.id].am;if(r&&tempState(u.kind,r.v)==="bad"){hot++;exc.push([date,`${u.name} read ${r.v}°C`,"bad"])}}
+    if(date<end&&!st.complete&&!shut)exc.push([date,st.any?"Diary not completed":"No diary entry",st.any?"warn":"bad"]);
+    if(d&&d.problems&&d.problems.text)exc.push([date,d.problems.text,""]);
   }
-  const sc=$("#histScore");sc.textContent=`${complete} of ${trading} trading days complete`;sc.className="pill "+(complete>=trading-2?"ok":complete>=trading-8?"warn":"bad");
-  const tb=$("#excTable tbody");tb.replaceChildren();
-  if(!exc.length)tb.append(el("tr",{},el("td",{colspan:2,text:"Nothing to report."})));
-  for(const[date,w]of exc.reverse())tb.append(el("tr",{},el("td",{text:nice(date),style:"white-space:nowrap"}),el("td",{text:w})));
+  const stat=(n,l,c)=>el("div",{class:"stat glass"},el("b",{class:c||"",text:n}),el("span",{text:l}));
+  $("#histStats").replaceChildren(stat(`${complete}/${trading}`,"days complete",complete>=trading-2?"ok":"warn"),stat(String(missed),"days missed",missed?"bad":"ok"),stat(String(hot),"readings out of range",hot?"bad":"ok"));
+  const box=$("#excList");box.replaceChildren();
+  if(!exc.length)box.append(el("div",{class:"empty",text:"Nothing to report in the last 4 weeks."}));
+  for(const[date,w,c]of exc.reverse())box.append(el("button",{class:"lrow",type:"button",onclick:()=>goDay(date)},
+    el("span",{class:"sdot "+c}),el("span",{class:"t"},el("b",{text:w}),el("span",{class:"s",text:nice(date)})),el("span",{class:"chev"},svgi(ICON.chevR))));
 }
 
 /* ---------- task lists (extra checks & cleaning) ---------- */
 const TASKS={
-  extras:{list:"#xList",form:"#xForm",title:"#xFormTitle",panel:"#xFormPanel",pill:"#xPill",noun:"extra check",
+  extras:{list:"#xList",form:"#xForm",title:"#xFormTitle",panel:"#xFormPanel",noun:"extra check",
     fields:[["name","Check","text","e.g. Probe thermometer accuracy check"],["how","How to do it","text","e.g. Iced water and boiling water test; record in Prove it"],["freq","How often","freq"],["who","Who does it","text","e.g. Duty manager"]]},
-  cleaning:{list:"#kList",form:"#kForm",title:"#kFormTitle",panel:"#kFormPanel",pill:"#kPill",noun:"cleaning task",
+  cleaning:{list:"#kList",form:"#kForm",title:"#kFormTitle",panel:"#kFormPanel",noun:"cleaning task",
     fields:[["name","Item or area","text","e.g. Coffee machine group heads"],["how","How to clean (method & product)","text","e.g. Backflush with cleaning tablet, rinse"],["freq","How often","freq"],["who","Who does it","text","e.g. Closing barista"]]}};
 const editing={extras:null,cleaning:null};
 function buildTaskForm(kind){
@@ -415,7 +456,7 @@ function buildTaskForm(kind){
     const v={};for(const[k]of cfg.fields)v[k]=$(`#${kind}_f_${k}`).value.trim();
     if(!v.name){msg.textContent="Give it a name first.";return}
     const ok=editing[kind]?await save(()=>D(kind,editing[kind]).update(v)):await save(()=>C(kind).add({...v,createdAt:Date.now()}));
-    if(ok){msg.textContent=`Saved ${v.name}.`;editTask(kind,null)}
+    if(ok){msg.textContent="";toast(`Saved ${v.name}`);editTask(kind,null)}
   }},"Save");
   box.append(f,el("div",{class:"row"},saveBtn,cancel,del,msg));
   box._cancel=cancel;box._del=del;
@@ -424,28 +465,39 @@ function editTask(kind,t){
   const cfg=TASKS[kind];editing[kind]=t?t.id:null;
   $(cfg.title).textContent=t?"Edit "+t.name:"Add a "+cfg.noun;
   for(const[k,,type]of cfg.fields)$(`#${kind}_f_${k}`).value=t?(t[k]||(type==="freq"?"weekly":"")):(type==="freq"?"weekly":"");
-  const box=$(cfg.form);box._cancel.hidden=!t;box._del.hidden=!t;
-  if(t)$(cfg.panel).scrollIntoView({behavior:"smooth",block:"start"});
+  const box=$(cfg.form);box._cancel.hidden=true;box._del.hidden=!t;
+  setForm(kind,!!t);
 }
 function renderTasks(kind){
   const cfg=TASKS[kind],box=$(cfg.list);box.replaceChildren();
-  const items=[...S[kind]].sort((a,b)=>(FREQ[a.freq]??99)-(FREQ[b.freq]??99)||a.name.localeCompare(b.name));
-  let over=0;const ids=[];
-  if(!items.length)box.append(el("div",{class:"empty",text:`Nothing listed yet. Add your first ${cfg.noun} below.`}));
-  for(const t of items){
-    const st=taskState(t);if(st.overdue)over++;if(t.lastBy)ids.push(t.lastBy);
-    const note=el("input",{type:"text",id:`${kind}_n_${t.id}`,placeholder:"Note (optional)",disabled:ro(),"aria-label":"Note for "+t.name});
-    const doneBtn=el("button",{class:"btn sm",disabled:ro(),onclick:()=>completeTask(kind,t,S.site,note.value.trim())},"Done");
-    const last=t.log&&t.log[0];
-    box.append(el("div",{class:"task"},
-      el("div",{},el("h3",{text:t.name}),t.how?el("p",{class:"how",text:t.how}):null,
-        el("div",{class:"meta"},el("span",{text:(t.freq||"").replace(/^./,c=>c.toUpperCase())}),t.who?el("span",{text:"Who: "+t.who}):null,
-          t.lastAt?el("span",{text:`Last: ${when(t.lastAt)} by ${nameOf(t.lastBy)}${last&&last.note?" – "+last.note:""}`}):null)),
-      el("div",{class:"act"},el("span",{class:"pill "+st.cls,text:st.text}),ro()?null:el("button",{class:"btn ghost sm",onclick:()=>editTask(kind,t)},"Edit")),
-      ro()?null:el("div",{class:"done"},note,doneBtn)));
+  const R=ro(),ids=[];let over=0;
+  const items=[...S[kind]].map(t=>({t,st:taskState(t),due:dueDate(t)}));
+  if(!items.length)box.append(el("div",{class:"empty glass",text:`Nothing listed yet.${R?"":` Tap ${FORMS[kind].add} to add your first ${cfg.noun}.`}`}));
+  const groups=[["Overdue",x=>x.st.overdue],["Due today",x=>!x.st.overdue&&x.st.cls==="warn"&&FREQ[x.t.freq]>0],["As needed",x=>!FREQ[x.t.freq]],["Coming up",()=>true]];
+  const left=new Set(items);
+  for(const[label,test]of groups){
+    const g=[...left].filter(test);g.forEach(x=>left.delete(x));if(!g.length)continue;
+    g.sort((a,b)=>(a.due||"9").localeCompare(b.due||"9")||a.t.name.localeCompare(b.t.name));
+    if(label==="Overdue")over=g.length;
+    const list=el("div",{class:"list glass"});
+    for(const{t,st}of g){
+      if(t.lastBy)ids.push(t.lastBy);
+      const note=el("input",{type:"text",placeholder:"Note (optional)",disabled:R,"aria-label":"Note for "+t.name});
+      const hist=(t.log||[]).slice(0,5).map(e=>el("li",{},el("span",{text:when(e.at)}),el("span",{class:"s",text:nameOf(e.by)+(e.note?" · "+e.note:"")})));
+      for(const e of(t.log||[]).slice(0,5))ids.push(e.by);
+      list.append(xrow(kind+t.id,{
+        title:t.name,
+        sub:[(t.freq||"").replace(/^./,c=>c.toUpperCase()),t.who,t.lastAt?`last ${when(t.lastAt)}, ${nameOf(t.lastBy)}`:"never done"].filter(Boolean).join(" · "),
+        right:[label==="Coming up"||label==="As needed"?el("span",{class:"pill "+(label==="As needed"?"":"ok"),text:label==="As needed"?"As needed":st.text.replace(/^Due /,"")}):el("span",{class:"pill "+st.cls,text:st.overdue?st.text.replace(/^Not done yet · /,"").replace("Overdue by ","+"):"Today"}),
+          R?null:el("button",{class:"btn sm",type:"button",onclick:()=>completeTask(kind,t,S.site,"")},"Done")],
+        details:[t.how?el("p",{class:"how",text:t.how}):null,
+          R?null:el("div",{class:"row"},note,el("button",{class:"btn ghost sm",type:"button",onclick:()=>completeTask(kind,t,S.site,note.value.trim())},"Done with note")),
+          hist.length?el("ul",{class:"hist"},...hist):el("p",{class:"s",text:"Not recorded as done yet."}),
+          R?null:el("div",{class:"row"},el("button",{class:"btn ghost sm",type:"button",onclick:()=>editTask(kind,t)},"Edit "+cfg.noun))]}));
+    }
+    box.append(el("div",{class:"label"+(label==="Overdue"?" bad":""),text:`${label} · ${g.length}`}),list);
   }
-  const p=$(cfg.pill);p.textContent=over?`${over} overdue`:items.length?"Up to date":"Empty";p.className="pill "+(over?"bad":items.length?"ok":"");
-  $(cfg.panel).hidden=ro();
+  $(cfg.panel).hidden=R||!formOpen[kind];
   resolveNames(ids);
   return over;
 }
@@ -462,23 +514,39 @@ function fillProve(){
   for(const[k,r]of Object.entries(PROVE))if(!S.settings.proveOff.includes(k))sel.append(el("option",{value:k},r.label));
   if(!sel.options.length)sel.append(el("option",{value:"other"},PROVE.other.label));
   if([...sel.options].some(o=>o.value===cur))sel.value=cur;
+  const box=$("#pMethods");box.replaceChildren();
+  for(const o of sel.options)box.append(el("button",{type:"button",role:"radio","aria-checked":String(o.value===sel.value),class:o.value===sel.value?"on":"",
+    onclick:()=>{sel.value=o.value;fillProve()}},o.textContent));
   sel.dispatchEvent(new Event("change"));
+}
+// The pass/fail result, worked out as the reading is typed.
+function proveLive(){
+  const m=$("#pMethod").value,r=PROVE[m],box=$("#pResult");if(!r)return;
+  const raw=$("#pReading").value.trim(),v=raw===""?null:Number(raw);
+  const pass=proveResult(m,v,$("#pManual").value);
+  box.hidden=pass==null||(r.manual&&raw===""&&!$("#pAction").value);
+  if(box.hidden)return;
+  box.className="result "+(pass?"ok":"bad");
+  box.replaceChildren(el("span",{class:"badge "+(pass?"done":"bad")},svgi(ICON[pass?"check":"warn"])),
+    el("span",{text:pass?"Pass":r.manual?"Fail: say what you did about it":`Fail: ${r.hint.replace(/^Pass /,"needs to be ").replace(/\..*$/,"")}. Say what you did about it.`}));
 }
 function proveForm(){
   const sel=$("#pMethod");
   $("#pDate").value=today();
-  const upd=()=>{const r=PROVE[sel.value];if(!r)return;$("#pReadLbl").textContent=`Reading (${r.unit||"°C"})`;$("#pHint").textContent=r.hint;$("#pManualWrap").hidden=!r.manual};
+  const upd=()=>{const r=PROVE[sel.value];if(!r)return;$("#pReadLbl").textContent=r.unit==="min"?"Minutes":`Reading (${r.unit||"°C"})`;$("#pHint").textContent=r.hint;$("#pManualWrap").hidden=!r.manual;proveLive()};
   sel.addEventListener("change",upd);fillProve();
+  for(const x of["#pReading","#pManual"])$(x).addEventListener("input",proveLive);
   $("#pSave").addEventListener("click",async()=>{
     const m=sel.value,raw=$("#pReading").value.trim(),v=raw===""?null:Number(raw);
     const food=$("#pFood").value.trim();
     if(!food){$("#pMsg").textContent="Say what food or equipment you checked.";return}
     if(!PROVE[m].manual&&(v==null||!isFinite(v))){$("#pMsg").textContent="Enter the reading.";return}
     const pass=proveResult(m,v,$("#pManual").value);
+    if(pass===false&&!$("#pAction").value.trim()){$("#pMsg").textContent="It failed: write what you did about it before saving.";$("#pAction").focus();return}
     const rec={date:$("#pDate").value||today(),method:m,food,reading:v,unit:PROVE[m].unit||"°C",pass,action:$("#pAction").value.trim(),by:S.me,at:Date.now()};
     if(await save(()=>C("proveit").add(rec))){
-      $("#pMsg").textContent=pass?"Saved: pass.":"Saved: fail. Make sure the action taken is recorded.";
-      $("#pFood").value="";$("#pReading").value="";$("#pAction").value="";
+      $("#pMsg").textContent="";toast(pass?`Saved: ${food} passed`:`Saved: ${food} failed, action recorded`);
+      $("#pFood").value="";$("#pReading").value="";$("#pAction").value="";proveLive();
     }
   });
 }
@@ -487,22 +555,15 @@ function renderProve(){
   const recs=[...S.prove].sort((a,b)=>(b.date||"").localeCompare(a.date||"")||(b.at||0)-(a.at||0));
   const fails=recs.filter(r=>r.pass===false).length;
   const p=$("#pPill");p.textContent=`${recs.length} record${recs.length===1?"":"s"}${fails?` · ${fails} failed`:""}`;p.className="pill "+(fails?"warn":recs.length?"ok":"");
-  if(!recs.length){box.append(el("div",{class:"empty",text:"No Prove it records yet. Start with a probe thermometer check and the core temperature of something you cook or reheat."}))}
-  else{
-    const tb=el("tbody");
-    for(const r of recs){
-      ids.push(r.by);
-      const rule=PROVE[r.method]||{label:r.method};
-      tb.append(el("tr",{},
-        el("td",{text:short(r.date),style:"white-space:nowrap"}),
-        el("td",{},el("div",{style:"font-weight:600",text:r.food}),el("div",{class:"by",text:rule.label})),
-        el("td",{class:"res",text:r.reading==null?"–":`${r.reading}${r.unit==="min"?" min":"°C"}`}),
-        el("td",{},el("span",{class:"pill "+(r.pass?"ok":"bad"),text:r.pass?"Pass":"Fail"})),
-        el("td",{text:r.action||""}),
-        el("td",{class:"by",text:nameOf(r.by)}),
-        ro()?el("td"):el("td",{},(()=>{const b=el("button",{class:"btn ghost sm danger"},"Remove");armDelete(b,"Remove",()=>save(()=>D("proveit",r.id).delete()));return b})())));
-    }
-    box.append(el("div",{class:"scroll"},el("table",{},el("thead",{},el("tr",{},...["Date","Check","Result","","Notes / action","By",""].map(h=>el("th",{text:h})))),tb)));
+  if(!recs.length)box.append(el("div",{class:"empty",text:"No records yet. Start with a probe thermometer check and the core temperature of something you cook or reheat."}));
+  for(const r of recs.slice(0,200)){
+    ids.push(r.by);
+    const rule=PROVE[r.method]||{label:r.method};
+    let del=null;if(!ro()){del=el("button",{class:"btn ghost sm danger",type:"button"},"Remove record");armDelete(del,"Remove record",()=>save(()=>D("proveit",r.id).delete()))}
+    box.append(xrow("p"+r.id,{
+      title:r.food,sub:`${rule.label} · ${short(r.date)}`,
+      right:[el("span",{class:"res",text:r.reading==null?"":`${r.reading}${r.unit==="min"?" min":"°"}`}),el("span",{class:"pill "+(r.pass?"ok":"bad"),text:r.pass?"Pass":"Fail"})],
+      details:[xfacts([["Action",r.action],["Recorded by",nameOf(r.by)+(r.at?", "+when(r.at):"")],["Rule",rule.hint]]),del?el("div",{class:"row"},del):null]}));
   }
   $("#pFormPanel").hidden=ro();
   resolveNames(ids);
@@ -523,31 +584,26 @@ function supForm(){
     if(!v.name){msg.textContent="Add the supplier's name first.";return}
     v.by=S.me;v.at=Date.now();
     const ok=editSup?await save(()=>D("suppliers",editSup).set(v)):await save(()=>C("suppliers").add(v));
-    if(ok){msg.textContent=`Saved ${v.name}.`;editSupplier(null)}
+    if(ok){msg.textContent="";toast(`Saved ${v.name}`);editSupplier(null)}
   }},"Save supplier");
   box.append(f,el("div",{class:"row"},saveBtn,cancel,del,msg));box._cancel=cancel;box._del=del;
 }
 function editSupplier(s){
   editSup=s?s.id:null;$("#sFormTitle").textContent=s?"Edit "+s.name:"Add a supplier";
   for(const[k]of SUP_FIELDS)$("#s_"+k).value=s?(s[k]||""):"";
-  $("#sForm")._cancel.hidden=!s;$("#sForm")._del.hidden=!s;
-  if(s)$("#sFormPanel").scrollIntoView({behavior:"smooth",block:"start"});
+  $("#sForm")._cancel.hidden=true;$("#sForm")._del.hidden=!s;
+  setForm("suppliers",!!s);
 }
 function renderSuppliers(){
   const box=$("#sList");box.replaceChildren();
   const list=[...S.suppliers].sort((a,b)=>a.name.localeCompare(b.name));
-  const p=$("#sPill");p.textContent=`${list.length} supplier${list.length===1?"":"s"}`;p.className="pill "+(list.length?"ok":"");
-  if(!list.length)box.append(el("div",{class:"empty",text:"No suppliers yet. Add your milk, coffee, bakery and any other food or drink suppliers below."}));
-  for(const s of list){
-    const bits=[s.contact,s.phone,s.email].filter(Boolean).join(" · ");
-    box.append(el("div",{class:"card"},
-      el("div",{class:"row spread"},el("h3",{text:s.name}),ro()?null:el("button",{class:"btn ghost sm",onclick:()=>editSupplier(s)},"Edit")),
-      s.supplies?el("div",{text:s.supplies}):null,
-      bits?el("div",{class:"by",text:bits}):null,
-      s.address?el("div",{class:"by",text:s.address}):null,
-      (s.rating||s.notes)?el("div",{class:"by",text:[s.rating?"Hygiene rating: "+s.rating:"",s.notes].filter(Boolean).join(" · ")}):null));
-  }
-  $("#sFormPanel").hidden=ro();
+  if(!list.length)box.append(el("div",{class:"empty",text:"No suppliers yet. Add your milk, coffee, bakery and any other food or drink suppliers."}));
+  for(const s of list)box.append(xrow("s"+s.id,{
+    lead:el("span",{class:"avatar sm",text:initials(s.name)}),title:s.name,sub:s.supplies||s.contact||"",
+    right:[callBtn(s.phone,"Call "+s.name)],
+    details:[xfacts([["Contact",s.contact],["Phone",s.phone?telLink(s.phone):""],["Email",s.email?el("a",{href:"mailto:"+s.email,text:s.email}):""],["Address",s.address],["Hygiene rating",s.rating],["Notes",s.notes]]),
+      ro()?null:el("div",{class:"row"},el("button",{class:"btn ghost sm",type:"button",onclick:()=>editSupplier(s)},"Edit supplier"))]}));
+  $("#sFormPanel").hidden=ro()||!formOpen.suppliers;
 }
 
 /* ---------- HACCP plans & risk assessments ---------- */
@@ -762,7 +818,7 @@ function renderPlansList(){
   const list=[...S.plans].sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
   const over=list.filter(d=>reviewState(d).overdue).length;
   const p=$("#plPill");p.textContent=list.length?(over?`${over} review${over===1?"":"s"} overdue`:`${list.length} document${list.length===1?"":"s"}`):"None yet";p.className="pill "+(over?"bad":list.length?"ok":"");
-  if(!list.length)box.append(el("div",{class:"empty",text:"No HACCP plans or risk assessments yet. Upload one below, or start from a template."}));
+  if(!list.length)box.append(el("div",{class:"empty",text:"No HACCP plans or risk assessments yet. Start one from a template above."}));
   for(const d of list){
     const rows=d[rowsKey(d.type)]||[];ids.push(d.updatedBy);
     const summary=d.type==="haccp"
@@ -1079,7 +1135,7 @@ function renderInspList(){
   if(S.insp)return;
   const box=$("#ehoLatest");box.replaceChildren();
   if(!latest){
-    box.append(el("section",{class:"panel"},el("h2",{text:`${curSite().name} EHO inspection`}),el("div",{class:"empty",text:`No inspection recorded for the ${curSite().name} yet. Upload its last inspection report below, or enter it by hand.`})));
+    box.append(el("section",{class:"panel"},el("h2",{text:`${curSite().name} EHO inspection`}),el("div",{class:"empty",text:`No inspection recorded for the ${curSite().name} yet. Enter the last inspection below: the date, rating, scores and anything the inspector asked you to fix.`})));
   }else{
     box.append(inspHero(latest,true));
     box.append(el("section",{class:"panel"},
@@ -1312,7 +1368,7 @@ function renderOnbList(){
   const list=[...S.onboarding].sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
   const over=list.filter(d=>reviewState(d).overdue).length;
   const p=$("#obPill");p.textContent=list.length?(over?`${over} review${over===1?"":"s"} overdue`:`${list.length} document${list.length===1?"":"s"}`):"None yet";p.className="pill "+(over?"bad":list.length?"ok":"");
-  if(!list.length)box.append(el("div",{class:"empty",text:"No onboarding documents yet. Upload your staff handbook or induction checklist below, or start from the template."}));
+  if(!list.length)box.append(el("div",{class:"empty",text:"No onboarding documents yet. Start an induction checklist or a blank document above."}));
   for(const d of list){
     ids.push(d.updatedBy);const rs=reviewState(d);
     box.append(el("div",{class:"plan-card"},
@@ -1473,15 +1529,15 @@ function conForm(){
     if(!v.phone&&!v.email&&!v.outOfHours){msg.textContent="Add a phone number or email so people can reach them.";return}
     v.by=S.me;v.at=Date.now();
     const ok=editCon?await save(()=>D("contacts",editCon).set(v)):await save(()=>C("contacts").add(v));
-    if(ok){msg.textContent=`Saved ${v.name}.`;editContact(null)}
+    if(ok){msg.textContent="";toast(`Saved ${v.name}`);editContact(null)}
   }},"Save contact");
   box.append(f,el("div",{class:"row"},saveBtn,cancel,del,msg));box._cancel=cancel;box._del=del;box._msg=msg;
 }
 function editContact(c,typeOnly){
   editCon=c?c.id:null;$("#cFormTitle").textContent=c?"Edit "+c.name:"Add a contact";
   for(const[k]of CON_FIELDS)$("#c_"+k).value=c?(c[k]||(k==="type"?"Other":"")):(k==="type"?(typeOnly||CON_TYPES[0]):"");
-  $("#cForm")._cancel.hidden=!c;$("#cForm")._del.hidden=!c;
-  if(c||typeOnly){$("#cFormPanel").scrollIntoView({behavior:"smooth",block:"start"});$("#c_name").focus({preventScroll:true})}
+  $("#cForm")._cancel.hidden=true;$("#cForm")._del.hidden=!c;
+  setForm("contacts",!!(c||typeOnly));
 }
 function copyBtn(text){
   return el("button",{class:"btn ghost sm",onclick:async e=>{
@@ -1493,27 +1549,26 @@ function renderContacts(){
   const box=$("#cList");box.replaceChildren();
   const order=t=>{const i=CON_TYPES.indexOf(t);return i<0?99:i};
   const list=[...S.contacts].sort((a,b)=>order(a.type)-order(b.type)||a.name.localeCompare(b.name));
-  const p=$("#cPill");p.textContent=`${list.length} contact${list.length===1?"":"s"}`;p.className="pill "+(list.length?"ok":"");
-  if(!list.length)box.append(el("div",{class:"empty",text:"No contacts yet. Start with your council's food safety team, pest control and your fridge engineer."}));
-  let lastType=null;
-  for(const c of list){
-    if(c.type!==lastType){lastType=c.type;box.append(el("div",{class:"label",style:"padding-top:10px",text:c.type||"Other"}))}
-    const nums=el("div",{class:"row",style:"gap:6px 14px"});
-    if(c.phone)nums.append(el("span",{class:"row",style:"gap:6px"},el("span",{class:"mono",text:c.phone}),copyBtn(c.phone)));
-    if(c.outOfHours)nums.append(el("span",{class:"row",style:"gap:6px"},el("span",{class:"by",text:"Out of hours:"}),el("span",{class:"mono",text:c.outOfHours}),copyBtn(c.outOfHours)));
-    box.append(el("div",{class:"card"},
-      el("div",{class:"row spread"},el("h3",{text:c.name}),ro()?null:el("button",{class:"btn ghost sm",onclick:()=>editContact(c)},"Edit")),
-      c.person?el("div",{text:c.person}):null,
-      (c.phone||c.outOfHours)?nums:null,
-      c.email?el("div",{class:"by",text:c.email}):null,
-      (c.account||c.notes)?el("div",{class:"by",text:[c.account?"Ref: "+c.account:"",c.notes].filter(Boolean).join(" · ")}):null));
+  if(!list.length)box.append(el("div",{class:"empty glass",text:"No contacts yet. Start with your council's food safety team, pest control and your fridge engineer."}));
+  const row=c=>xrow("c"+c.id,{
+    title:c.name,sub:[c.person,c.type].filter(Boolean).join(" · "),
+    right:[callBtn(c.outOfHours||c.phone,"Call "+c.name)],
+    details:[xfacts([["Phone",c.phone?telLink(c.phone):""],["Out of hours",c.outOfHours?telLink(c.outOfHours):""],["Email",c.email?el("a",{href:"mailto:"+c.email,text:c.email}):""],["Reference",c.account],["Notes",c.notes]]),
+      ro()?null:el("div",{class:"row"},el("button",{class:"btn ghost sm",type:"button",onclick:()=>editContact(c)},"Edit contact"))]});
+  // Anyone with an out-of-hours number goes first: that's who you need in a hurry.
+  const urgent=list.filter(c=>c.outOfHours);
+  if(urgent.length)box.append(el("div",{class:"label bad",text:"Emergency and out of hours"}),el("div",{class:"list glass"},...urgent.map(row)));
+  let cur=null,grp=null;
+  for(const c of list.filter(c=>!c.outOfHours)){
+    if(c.type!==cur){cur=c.type;grp=el("div",{class:"list glass"});box.append(el("div",{class:"label",text:c.type||"Other"}),grp)}
+    grp.append(row(c));
   }
   const have=new Set(list.map(c=>c.type));
   const sug=$("#cSuggest");sug.replaceChildren();
   const missing=["Local council / environmental health","Pest control","Fridge & freezer engineer","Coffee machine technician","Gas engineer","Electrician","Plumber","Water supplier","Doctor / NHS 111","Key holder / manager"].filter(t=>!have.has(t));
-  for(const t of missing)sug.append(el("button",{class:"btn ghost sm",onclick:()=>editContact(null,t)},"+ "+t));
+  for(const t of missing)sug.append(el("button",{class:"btn ghost sm",type:"button",onclick:()=>editContact(null,t)},"+ "+t));
   $("#cSuggestPanel").hidden=ro()||!missing.length;
-  $("#cFormPanel").hidden=ro();
+  $("#cFormPanel").hidden=ro()||!formOpen.contacts;
 }
 
 /* ---------- staff training ---------- */
@@ -1549,7 +1604,7 @@ function staffForm(){
       if(ok)done.push(siteOf(site).name);
     }
     $("#tSave").disabled=ro();
-    if(done.length){editStaff(null);$("#tMsg").textContent=`Saved ${name} to ${done.join(", ")}.`+(done.length<sites.length?" Some sites couldn't be saved; try again.":"")}
+    if(done.length){editStaff(null);$("#tMsg").textContent="";toast(`Saved ${name} to ${done.join(", ")}`+(done.length<sites.length?". Some sites couldn't be saved; try again.":""))}
   });
   $("#tCancel").addEventListener("click",()=>editStaff(null));
   armDelete($("#tDelete"),"Remove person",async()=>{if(await save(()=>D("staff",S.editStaff).delete())){editStaff(null);toast("Removed")}});
@@ -1561,49 +1616,80 @@ function editStaff(p){
   const on=p&&Array.isArray(p.sites)&&p.sites.length?p.sites:[S.site];
   document.querySelectorAll("#tSites input[data-site]").forEach(b=>b.checked=on.includes(b.dataset.site)||b.dataset.site===S.site&&!!p);
   $("#ts_all").checked=[...document.querySelectorAll("#tSites input[data-site]")].every(b=>b.checked);
-  $("#tCancel").hidden=!p;$("#tDelete").hidden=!p;
-  if(p)$("#tFormPanel").scrollIntoView({behavior:"smooth",block:"start"});
+  $("#tCancel").hidden=true;$("#tDelete").hidden=!p;
+  setForm("staff",!!p);
+}
+// Record that someone was trained on one topic today.
+async function trainedToday(p,k){
+  const topics={...(p.topics||{}),[k]:{date:today(),by:S.me}};
+  if(await save(()=>D("staff",p.id).update({topics})))toast(`${p.name}: ${TOPICS.find(t=>t[0]===k)[1]} recorded`);
 }
 function renderStaff(){
-  const box=$("#tMatrix");box.replaceChildren();
   const list=[...S.staff].sort((a,b)=>a.name.localeCompare(b.name));
-  const gaps=list.filter(p=>TOPICS.some(([k])=>!(p.topics&&p.topics[k]))).length;
-  const pl=$("#tPill");pl.textContent=list.length?(gaps?`${gaps} with training to do`:"Everyone trained"):"No staff yet";pl.className="pill "+(!list.length?"":gaps?"warn":"ok");
-  if(!list.length){box.append(el("div",{class:"empty",text:"No one listed yet. Add each member of staff below with the dates they were trained."}))}
-  else{
+  const todo=p=>TOPICS.filter(([k])=>!(p.topics&&p.topics[k]));
+  const full=list.filter(p=>!todo(p).length).length,gaps=list.length-full;
+  const stat=(n,l,c)=>el("div",{class:"stat glass"},el("b",{class:c||"",text:n}),el("span",{text:l}));
+  $("#tStats").replaceChildren(stat(String(list.length),"people"),stat(String(full),"fully trained","ok"),stat(String(gaps),"with training to do",gaps?"warn":"ok"));
+  $("#tStats").hidden=!list.length;
+  const box=$("#tList");box.replaceChildren();
+  if(!list.length)box.append(el("div",{class:"empty",text:"No one listed yet. Add each member of staff with the dates they were trained."}));
+  for(const p of list){
+    const left=todo(p),done=TOPICS.length-left.length;
+    box.append(xrow("t"+p.id,{
+      lead:ringEl(done,TOPICS.length),title:p.name,
+      sub:[p.role,left.length?`${left.length} to do`:"All training done"].filter(Boolean).join(" · "),
+      right:[left.length?el("span",{class:"pill warn",text:`${done}/${TOPICS.length}`}):el("span",{class:"pill ok",text:"Trained"})],
+      details:[el("ul",{class:"topics"},...TOPICS.map(([k,l])=>{const t=p.topics&&p.topics[k];
+          return el("li",{class:t?"on":""},el("span",{class:"badge "+(t?"done":"")},t?svgi(ICON.check):""),el("span",{class:"t"},el("b",{text:l}),el("span",{class:"s",text:t?"Trained "+short(t.date):"Not yet"})),
+            t||ro()?null:el("button",{class:"btn ghost sm",type:"button",onclick:()=>trainedToday(p,k)},"Trained today"))})),
+        xfacts([["Started",p.start?short(p.start):""],["Sites",Array.isArray(p.sites)&&p.sites.length>1?p.sites.map(x=>siteOf(x).name).join(", "):""],["Notes",p.notes]]),
+        ro()?null:el("div",{class:"row"},el("button",{class:"btn ghost sm",type:"button",onclick:()=>editStaff(p)},"Edit record"))]}));
+  }
+  const mx=$("#tMatrix");mx.replaceChildren();
+  if(list.length){
     const head=el("tr",{},el("th",{text:"Name"}),...TOPICS.map(([,l])=>el("th",{class:"al",text:l})));
     const tb=el("tbody");
-    for(const p of list){
-      tb.append(el("tr",{},
-        el("td",{},el("div",{style:"font-weight:600",text:p.name}),el("div",{class:"by",text:[p.role,p.start?"started "+short(p.start):""].filter(Boolean).join(" · ")}),
-          Array.isArray(p.sites)&&p.sites.length>1?el("div",{class:"by",text:"Sites: "+p.sites.map(x=>siteOf(x).name).join(", ")}):null,
-          p.notes?el("div",{class:"by",text:p.notes}):null,
-          ro()?null:el("button",{class:"btn ghost sm",style:"margin-top:4px",onclick:()=>editStaff(p)},"Edit")),
-        ...TOPICS.map(([k])=>{const t=p.topics&&p.topics[k];return el("td",{class:"dt"+(t?"":" no"),text:t?short(t.date):"–"})})));
-    }
-    box.append(el("div",{class:"scroll"},el("table",{class:"matrix"},el("thead",{},head),tb)));
+    for(const p of list)tb.append(el("tr",{},el("td",{},el("b",{text:p.name}),el("div",{class:"by",text:p.role||""})),
+      ...TOPICS.map(([k])=>{const t=p.topics&&p.topics[k];return el("td",{class:"dt"+(t?"":" no"),text:t?short(t.date):"–"})})));
+    mx.append(el("div",{class:"scroll"},el("table",{class:"matrix"},el("thead",{},head),tb)));
   }
-  $("#tFormPanel").hidden=ro();
+  mx.closest("section").hidden=!list.length;
+  $("#tFormPanel").hidden=ro()||!formOpen.staff;
 }
 
 /* ---------- allergens ---------- */
+const algFilter=new Set();
+const ALG_SHORT={"Cereals with gluten":"Gluten","Sulphur dioxide":"Sulphites"};
+const algShort=a=>ALG_SHORT[a]||a.replace(/ \(.*\)$/,"");
 function renderAllergens(){
-  const box=$("#algMatrix");box.replaceChildren();
-  if(!S.allergens.length){box.append(el("div",{class:"empty",text:"No menu items yet. Add your first item below, then tick the allergens it contains."}))}
-  else{
-    const head=el("tr",{},el("th",{text:"Item"}),...ALLERGENS.map(a=>el("th",{class:"al",text:a})),el("th",{text:"Notes"}));
-    const tb=el("tbody");
-    for(const it of [...S.allergens].sort((a,b)=>a.name.localeCompare(b.name))){
-      const has=new Set(it.contains||[]);
-      tb.append(el("tr",{},
-        el("td",{},el("div",{style:"font-weight:600",text:it.name}),el("div",{class:"by",text:(it.source?it.source+" · ":"")+(it.at?"checked "+new Date(it.at).toLocaleDateString("en-GB"):"")+(it.importedFrom?` · copied from ${siteOf(it.importedFrom).name}`:"")}),
-          ro()?null:el("button",{class:"btn ghost sm",style:"margin-top:4px",onclick:()=>editAlg(it)},"Edit")),
-        ...ALLERGENS.map(a=>el("td",{class:"c",text:has.has(a)?"●":""})),
-        el("td",{text:it.notes||"",style:"min-width:160px"})));
-    }
-    box.append(el("div",{class:"scroll"},el("table",{class:"matrix"},el("thead",{},head),tb)));
+  const items=[...S.allergens].sort((a,b)=>a.name.localeCompare(b.name));
+  // "Free from" chips: tap allergens a customer must avoid, and the list shows only what's safe.
+  const fb=$("#algFilter");fb.replaceChildren(el("span",{class:"s",text:"Free from"}));
+  for(const a of ALLERGENS)fb.append(el("button",{type:"button",class:"fchip"+(algFilter.has(a)?" on":""),"aria-pressed":String(algFilter.has(a)),
+    onclick:()=>{algFilter.has(a)?algFilter.delete(a):algFilter.add(a);renderAllergens()}},algShort(a)));
+  const q=normT($("#algSearch").value);
+  const shown=items.filter(it=>(!q||normT(it.name+" "+(it.source||"")).includes(q))&&![...algFilter].some(a=>(it.contains||[]).includes(a)));
+  const box=$("#algList");box.replaceChildren();
+  if(!items.length)box.append(el("div",{class:"empty",text:`No menu items yet.${ro()?"":" Tap Add item to add your first, then tick the allergens it contains."}`}));
+  else if(!shown.length)box.append(el("div",{class:"empty",text:algFilter.size?`Nothing on the list is free from ${[...algFilter].map(algShort).join(", ")}.`:"No items match."}));
+  for(const it of shown){
+    const has=it.contains||[];
+    box.append(xrow("a"+it.id,{
+      title:it.name,sub:[it.source,it.notes].filter(Boolean).join(" · "),
+      right:[el("span",{class:"agl"},...(has.length?has.map(a=>el("span",{class:"ag",text:algShort(a)})):[el("span",{class:"pill ok",text:"None of the 14"})]))],
+      details:[xfacts([["Contains",has.join(", ")||"None of the 14 allergens"],["Notes",it.notes],["Source",it.source],["Checked",it.at?new Date(it.at).toLocaleDateString("en-GB")+(it.by?", "+nameOf(it.by):""):""],["Copied from",it.importedFrom?siteOf(it.importedFrom).name:""]]),
+        ro()?null:el("div",{class:"row"},el("button",{class:"btn ghost sm",type:"button",onclick:()=>editAlg(it)},"Edit item"))]}));
   }
-  $("#algFormPanel").hidden=ro();
+  const mx=$("#algMatrix");mx.replaceChildren();
+  if(items.length){
+    const head=el("tr",{},el("th",{text:"Item"}),...ALLERGENS.map(a=>el("th",{class:"al",text:algShort(a)})));
+    const tb=el("tbody");
+    for(const it of items){const h=new Set(it.contains||[]);
+      tb.append(el("tr",{},el("td",{},el("b",{text:it.name}),it.notes?el("div",{class:"by",text:it.notes}):null),...ALLERGENS.map(a=>el("td",{class:"c"},h.has(a)?el("span",{class:"y",title:a,text:"●"}):""))))}
+    mx.append(el("div",{class:"scroll"},el("table",{class:"matrix"},el("thead",{},head),tb)));
+  }
+  mx.closest("section").hidden=!items.length;
+  $("#algFormPanel").hidden=ro()||!formOpen.allergens;
 }
 function buildAlgChecks(){
   const c=$("#algChecks");
@@ -1615,8 +1701,8 @@ function editAlg(it){
   $("#algName").value=it?it.name:"";$("#algSupplier").value=it?(it.source||""):"";$("#algNotes").value=it?(it.notes||""):"";
   const has=new Set(it?it.contains||[]:[]);
   document.querySelectorAll("#algChecks input").forEach(cb=>cb.checked=has.has(cb.value));
-  $("#algCancel").hidden=!it;$("#algDelete").hidden=!it;
-  if(it)$("#algFormPanel").scrollIntoView({behavior:"smooth",block:"start"});
+  $("#algCancel").hidden=true;$("#algDelete").hidden=!it;
+  setForm("allergens",!!it);
 }
 
 /* ---------- review ---------- */
@@ -1635,16 +1721,15 @@ function renderReview(){
   const xOver=S.extras.filter(x=>taskState(x).overdue).length,kOver=S.cleaning.filter(x=>taskState(x).overdue).length;
   const pFail=S.prove.filter(r=>r.date>=start&&r.pass===false).length;
   const untrained=S.staff.filter(p=>TOPICS.some(([k])=>!(p.topics&&p.topics[k]))).length;
-  $("#revSummary").replaceChildren(
-    el("span",{class:"pill",text:`Since ${nice(start)}`}),
-    el("span",{class:"pill "+(comp===days?"ok":"warn"),text:`${comp}/${days} days complete`}),
-    el("span",{class:"pill "+(temps?"bad":"ok"),text:`${temps} day${temps===1?"":"s"} with temperature problems`}),
-    el("span",{class:"pill "+(pFail?"bad":"ok"),text:`${pFail} failed Prove it check${pFail===1?"":"s"}`}),
-    el("span",{class:"pill "+(kOver?"bad":"ok"),text:`${kOver} cleaning task${kOver===1?"":"s"} overdue`}),
-    el("span",{class:"pill "+(xOver?"bad":"ok"),text:`${xOver} extra check${xOver===1?"":"s"} overdue`}),
-    el("span",{class:"pill "+(untrained?"warn":"ok"),text:`${untrained} staff with training to do`}),
-    (()=>{const n=S.plans.filter(d=>reviewState(d).overdue).length;return el("span",{class:"pill "+(n?"bad":"ok"),text:`${n} HACCP/risk document${n===1?"":"s"} overdue for review`})})(),
-    (()=>{const l=inspSorted()[0];if(!l)return "";const n=(l.issues||[]).filter(i=>!i.done).length;return el("span",{class:"pill "+(n?"bad":"ok"),text:`${n} EHO issue${n===1?"":"s"} still open`})})());
+  // What happened since the last review, each linked to where it's recorded.
+  const nPlans=S.plans.filter(d=>reviewState(d).overdue).length,lastInsp=inspSorted()[0],nEho=lastInsp?(lastInsp.issues||[]).filter(i=>!i.done).length:0;
+  const pl=(n,w)=>`${n} ${w}${n===1?"":"s"}`;
+  const facts=[["history",`${comp} of ${days} days complete`,comp===days?"ok":"warn"],["history",pl(temps,"day")+" with temperature problems",temps?"bad":"ok"],
+    ["prove",pl(pFail,"failed Prove it check"),pFail?"bad":"ok"],["cleaning",pl(kOver,"cleaning job")+" overdue",kOver?"bad":"ok"],["extras",pl(xOver,"extra check")+" overdue",xOver?"bad":"ok"],
+    ["staff",pl(untrained,"person")+" with training to do",untrained?"warn":"ok"],["plans",pl(nPlans,"HACCP or risk document")+" due for review",nPlans?"bad":"ok"],
+    ...(lastInsp?[["eho",pl(nEho,"EHO issue")+" still open",nEho?"bad":"ok"]]:[])].filter(([t])=>canTab(t));
+  $("#revSummary").replaceChildren(el("div",{class:"s",text:`Since ${nice(start)}`}),...facts.map(([t,text,c])=>
+    el("button",{class:"lrow",type:"button",onclick:()=>show(t)},el("span",{class:"sdot "+c}),el("span",{class:"t"},el("b",{text})),el("span",{class:"chev"},svgi(ICON.chevR)))));
   const qs=$("#revQs");qs.replaceChildren();
   for(const[k,q]of REVIEW_QS){
     const cur=S.rev[k]||{};
@@ -1680,27 +1765,27 @@ function setAdFile(f){
 function renderAllergenDocs(){
   const box=$("#adList");box.replaceChildren();const ids=[];
   const list=[...S.allergenDocs].sort((a,b)=>(b.at||0)-(a.at||0));
-  const p=$("#adPill");p.textContent=list.length?`${list.length} PDF${list.length===1?"":"s"}`:"None yet";p.className="pill "+(list.length?"ok":"");
-  if(!list.length)box.append(el("div",{class:"empty",text:`No allergen PDF uploaded for the ${curSite().name} yet.`}));
+  if(!list.length)box.append(el("div",{class:"pdfcard glass none"},el("span",{class:"tile grey"},svgi(ICON.doc)),el("span",{class:"t"},el("b",{text:"No allergen PDF yet"}),el("span",{class:"s",text:`Upload the ${curSite().name}'s allergen matrix below so staff can open it here.`}))));
   list.forEach((d,i)=>{
     ids.push(d.by);
     const url="/_blob/"+d.assetId;
     let del=null;
     if(!ro()&&S.assets){
-      del=el("button",{class:"btn ghost sm danger"},"Remove");
+      del=el("button",{class:"btn ghost sm danger",type:"button"},"Remove");
       armDelete(del,"Remove",async()=>{
         if(await save(()=>D("allergenDocs",d.id).delete())){try{await S.assets.delete(d.assetId)}catch(e){}toast("PDF removed")}
       });
     }
-    box.append(el("div",{class:"plan-card"},
-      el("div",{style:"min-width:0"},el("a",{class:"open",href:url,target:"_blank",rel:"noopener",style:"text-decoration:none;display:inline-block"},d.title||d.fileName||"Allergen information"),
-        el("div",{class:"by",text:[d.fileName,d.size?kb(d.size):"",`uploaded ${when(d.at)} by ${nameOf(d.by)}`].filter(Boolean).join(" · ")}),
-        d.note?el("div",{class:"by",text:d.note}):null),
-      el("div",{class:"row",style:"gap:6px"},i===0?el("span",{class:"pill ok",text:"Latest"}):null,
-        el("a",{class:"btn ghost sm",href:url,target:"_blank",rel:"noopener",style:"text-decoration:none"},"Open PDF"),del)));
+    box.append(el("div",{class:"pdfcard glass"+(i?" old":"")},
+      el("span",{class:"tile red"},svgi(ICON.doc)),
+      el("span",{class:"t"},el("b",{text:d.title||d.fileName||"Allergen information"}),
+        el("span",{class:"s",text:[i===0?"Latest":"",d.size?kb(d.size):"",`${when(d.at)}, ${nameOf(d.by)}`].filter(Boolean).join(" · ")}),
+        d.note?el("span",{class:"s",text:d.note}):null),
+      el("a",{class:"btn sm"+(i?" ghost":""),href:url,target:"_blank",rel:"noopener"},"Open"),del));
   });
   const can=!ro()&&!!S.assets;
   $("#adUpload").hidden=!can;$("#adNoUpload").hidden=can||!S.db;
+  if(can&&!list.length)$("#adUpWrap").open=true;$("#adUpWrap").hidden=!S.db;
   resolveNames(ids);
 }
 async function uploadAllergenPdf(){
@@ -1774,6 +1859,7 @@ const ICON={
   setup:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/>',
   chevD:'<path d="M6 9l6 6 6-6"/>',chevR:'<path d="M9 6l6 6-6 6"/>',chevL:'<path d="M15 6l-6 6 6 6"/>',
   key:'<circle cx="8" cy="15" r="4"/><path d="M11 12l8-8M16 7l3 3"/>',shield:'<path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9 12l2 2 4-4"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',doc:'<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/>',
   out:'<path d="M14 4h4a2 2 0 012 2v12a2 2 0 01-2 2h-4M10 16l-4-4 4-4M6 12h10"/>',
   check:'<path d="M5 12.5l4.5 4.5L19 7.5"/>',warn:'<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17h.01"/>',dot:'',
   pen:'<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',lock:'<rect x="5" y="11" width="14" height="10" rx="2.5"/><path d="M8 11V8a4 4 0 018 0v3"/>',
@@ -1825,7 +1911,8 @@ function navRow(n,onclick){
     el("span",{class:"t"},el("b",{text:n.t}),n.sub?el("span",{class:"s",text:n.sub}):null),b?el("span",{class:"pill "+b.cls,text:b.text}):null,el("span",{class:"chev"},svgi(ICON.chevR)));
 }
 function renderNav(){
-  const vis=NAV.filter(n=>canTab(n.id));
+  // Until we know who is signed in, list only what every role can open.
+  const vis=NAV.filter(n=>canTab(n.id)&&(S.role||!MANAGER_TABS.has(n.id)));
   // sidebar
   const sn=$("#snav");sn.replaceChildren();
   const groups=[["diary",""],["records","Records"],["manage","Management"]];
@@ -2052,7 +2139,7 @@ $("#pubGo").addEventListener("click",async()=>{
   }catch(e){fail(e);pubNote="Publishing stopped part-way. Check each site's setup, then try again.";renderPublish()}
 });
 
-function renderAll(){renderSites();renderNav();renderHead();renderDay();renderWeek();renderHistory();renderTasks("extras");renderTasks("cleaning");renderProve();renderAllergenDocs();renderAllergens();renderPlansList();renderSuppliers();renderContacts();renderStaff();renderOnbList();renderInspList();renderReview();renderSetup()}
+function renderAll(){renderSites();renderNav();renderHead();renderAddBtn();renderDay();renderWeek();renderHistory();renderTasks("extras");renderTasks("cleaning");renderProve();renderAllergenDocs();renderAllergens();renderPlansList();renderSuppliers();renderContacts();renderStaff();renderOnbList();renderInspList();renderReview();renderSetup()}
 
 /* ---------- tabs ---------- */
 const TABS=["day","week","history","extras","cleaning","prove","allergens","eho","plans","suppliers","contacts","staff","onboarding","review","setup","records","more"];
@@ -2063,7 +2150,7 @@ function show(tab,opts){
   S.tab=tab;
   document.querySelectorAll("[data-panel]").forEach(p=>p.hidden=p.dataset.panel!==tab);
   $("#dayCtl").hidden=tab!=="day";$("#weekCtl").hidden=tab!=="week";updFab();
-  renderHead();renderNav();
+  renderHead();renderNav();renderAddBtn();
   if(changed&&!(opts&&opts.keepScroll))window.scrollTo({top:0});
   try{localStorage.setItem("sfbb.tab",tab)}catch(e){}
 }
@@ -2152,9 +2239,10 @@ $("#algSave").addEventListener("click",async()=>{
   const contains=[...document.querySelectorAll("#algChecks input:checked")].map(c=>c.value);
   const body={name,source:$("#algSupplier").value.trim(),contains,notes:$("#algNotes").value.trim(),by:S.me,at:Date.now()};
   const ok=S.editAlg?await save(()=>D("allergens",S.editAlg).set(body)):await save(()=>C("allergens").add(body));
-  if(ok){$("#algConfirm").textContent=`Saved ${name}.`;editAlg(null)}
+  if(ok){$("#algConfirm").textContent="";toast(`Saved ${name}`);editAlg(null)}
 });
 $("#algCancel").addEventListener("click",()=>editAlg(null));
+$("#algSearch").addEventListener("input",renderAllergens);
 armDelete($("#algDelete"),"Remove item",async()=>{if(await save(()=>D("allergens",S.editAlg).delete())){editAlg(null);toast("Item removed")}});
 $("#revSave").addEventListener("click",async()=>{
   if(REVIEW_QS.some(([k])=>!(S.rev[k]&&S.rev[k].a))){$("#revMsg").textContent="Answer every question before signing.";return}
@@ -2172,7 +2260,7 @@ applyTabs();renderAll();
     const me=await S.user.me();S.me=me.id;
     const w=await S.user.can("data.write");if(w===false){S.canWrite=false;$("#readonly").hidden=false}
     S.myName=me.name||"";S.role=me.role||"staff";renderMe();
-    if(!canTab(S.tab))show("day");else renderNav();
+    if(!canTab(S.tab))show("day",{quiet:true});else renderNav();
   }
   subscribeSummaries();
   subscribeSite();

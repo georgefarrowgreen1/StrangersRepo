@@ -33,48 +33,51 @@
   .pill{display:inline-flex;align-items:center;font-size:12px;border-radius:99px;white-space:nowrap}
   .err{color:var(--bad);font-weight:600;font-size:14px}
   .ok{color:var(--ok);font-weight:600;font-size:14px}
-  .people{display:grid}
-  .person{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 14px;align-items:center;padding:14px 0;border-bottom:1px solid var(--line)}
-  .person:last-child{border-bottom:0}
-  .person .who{display:grid;gap:4px;min-width:0}
-  .person .who strong{font-size:17px}
-  .person .meta{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;font-size:13px;color:var(--muted)}
-  .person.off .who strong{color:var(--muted);text-decoration:line-through}
-  .editor{grid-column:1/-1;display:grid;gap:12px;padding:14px;border-radius:16px;background:var(--sunk)}
+  .wrap{gap:14px;max-width:760px}
+  header.top{display:grid;gap:4px}
+  .trow{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
+  h1{font-size:34px;letter-spacing:-.03em;line-height:1.05}
+  .back{display:inline-flex;align-items:center;gap:2px;justify-self:start;margin-left:-6px;min-height:36px;padding:0 6px;font-weight:600;color:var(--accent);text-decoration:none}
+  svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;flex:none}
+  .addbtn{white-space:nowrap;display:inline-flex;align-items:center;gap:4px;height:40px;padding:0 14px 0 10px;border-radius:99px;border:0;cursor:pointer;font:inherit;font-weight:700;font-size:15px;background:var(--tint);color:var(--accent)}
+  .addbtn svg.i{width:18px;height:18px;stroke-width:2.8}
+  .closex{border:0;background:none;font:inherit;font-weight:600;color:var(--accent);cursor:pointer;padding:6px 8px}
+  .label{font-size:12.5px;font-weight:650;letter-spacing:.05em;color:var(--muted);margin:6px 6px -6px}
+  .glass{background:var(--glass);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);border:1px solid var(--glass-edge);box-shadow:var(--glass-hi),var(--lift)}
+  .list{border-radius:22px;overflow:hidden}
+  .person+.person{border-top:1px solid var(--line)}
+  .prow{display:flex;align-items:center;gap:12px;width:100%;min-height:64px;padding:10px 14px;border:0;background:none;font:inherit;color:var(--fg);text-align:left;cursor:pointer}
+  .prow:hover{background:var(--sunk)}
+  .avatar{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;flex:none;font-weight:700;font-size:14px;color:var(--accent);background:var(--tint)}
+  .prow .t{flex:1;display:grid;gap:1px;min-width:0}
+  .prow .t b{font-size:16px;font-weight:600}
+  .prow .t .s{font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .prow .pills{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end}
+  .chev{color:var(--muted);transition:transform .2s}
+  .person.open .chev{transform:rotate(90deg)}
+  .person.off .prow .t b{color:var(--muted);text-decoration:line-through}
+  .editor{display:grid;gap:12px;padding:4px 14px 16px}
+  .editor h3{font-size:13px;font-weight:650;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-top:6px}
   .pinbox{display:grid;gap:4px;padding:14px 16px;border-radius:16px;background:var(--ok-bg)}
   .pinbox b{font-family:var(--mono);font-size:26px;letter-spacing:.06em;word-break:break-all}
-  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,160px),1fr));gap:10px}
-  .stat{padding:12px 14px;border-radius:16px;background:var(--sunk);display:grid;gap:2px}
-  .stat b{font-size:20px}
-  .roles{margin:0;padding-left:18px;display:grid;gap:4px;color:var(--muted);font-size:14px}
-  @media (max-width:520px){.person{grid-template-columns:1fr}}
+  .roles{padding:4px 6px;color:var(--muted);font-size:14px}
+  .roles summary{cursor:pointer;font-weight:600;color:var(--accent);min-height:36px;display:flex;align-items:center}
+  .roles ul{margin:6px 0 0;padding-left:18px;display:grid;gap:4px}
+  @media (max-width:520px){.prow .pills .pill:not(:first-child){display:none}}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header class="top">
-    <div>
-      <div class="label">Kitchen Diary</div>
-      <h1>Admin</h1>
-    </div>
-    <div class="row">
-      <span class="note" id="me"></span>
-      <a class="btn ghost" href="/">Back to the diary</a>
+    <a class="back" href="/"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>Diary</a>
+    <div class="trow">
+      <div><h1>People</h1><p class="note" id="me"></p></div>
+      <button class="addbtn" type="button" id="addOpen"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Add person</button>
     </div>
   </header>
 
-  <section class="panel" aria-labelledby="pplTitle">
-    <div class="row spread"><h2 id="pplTitle">People</h2><span class="pill" id="pplCount"></span></div>
-    <ul class="roles">
-      <li><b>Staff</b>: daily diary, end of week, last 4 weeks, extra checks, cleaning, Prove it and allergens.</li>
-      <li><b>Managers</b>: everything staff can, plus EHO, HACCP &amp; risk, suppliers, contacts, staff training, onboarding, the 4-weekly review and Setup.</li>
-      <li><b>Admins</b>: everything, plus this page.</li>
-    </ul>
-    <div class="people" id="people" aria-live="polite"></div>
-  </section>
-
-  <section class="panel" aria-labelledby="addTitle">
-    <h2 id="addTitle">Add a person</h2>
+  <section class="panel" id="addPanel" aria-labelledby="addTitle" hidden>
+    <div class="row spread"><h2 id="addTitle">Add a person</h2><button class="closex" type="button" id="addClose">Cancel</button></div>
     <form id="add" class="fields" novalidate>
       <div class="field"><label for="aname">Name (shown on records)</label><input type="text" id="aname" autocapitalize="words" maxlength="60" placeholder="e.g. Sam Patel" required></div>
       <div class="field"><label for="auser">Username</label><input type="text" id="auser" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="32" placeholder="e.g. sam.patel" required></div>
@@ -83,10 +86,22 @@
       <div class="field"><label for="apw">Temporary password (optional)</label><input type="text" id="apw" maxlength="128" placeholder="Leave blank to create one" autocomplete="off" autocapitalize="none" spellcheck="false"></div>
       <div class="field" style="align-self:end"><button class="btn" type="submit">Add person</button></div>
     </form>
-    <p class="note">They sign in with the username and a temporary password, then choose their own password. The name is what appears on their records: if they've already recorded entries under a name, use exactly that name to keep their history together.</p>
+    <p class="note">They sign in with the username and a temporary password, then choose their own. The name is what appears on their records: if they've already recorded entries under a name, use exactly that name to keep their history together.</p>
     <p class="err" id="addErr" role="alert"></p>
-    <div class="pinbox" id="newPw" hidden role="status"></div>
   </section>
+  <div class="pinbox" id="newPw" hidden role="status"></div>
+
+  <div class="row spread"><span class="label">Everyone</span><span class="pill" id="pplCount"></span></div>
+  <div class="list glass people" id="people" aria-live="polite"></div>
+
+  <details class="roles">
+    <summary>What each role can do</summary>
+    <ul>
+      <li><b>Staff</b>: daily diary, end of week, last 4 weeks, extra checks, cleaning, Prove it and allergens.</li>
+      <li><b>Managers</b>: everything staff can, plus EHO, HACCP &amp; risk, suppliers, contacts, staff training, onboarding, the 4-weekly review and Setup.</li>
+      <li><b>Admins</b>: everything, plus this page.</li>
+    </ul>
+  </details>
 
 </div>
 <script src="/admin.js"></script>
