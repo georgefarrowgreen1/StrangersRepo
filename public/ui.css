@@ -72,14 +72,17 @@ html{scroll-padding-top:calc(env(safe-area-inset-top,0px) + 72px);scroll-padding
   html{scroll-padding:24px}
   body{padding-left:286px}
   .wrap{padding-top:calc(env(safe-area-inset-top,0px) + 22px);padding-bottom:48px;max-width:1040px}
-  .sidebar{position:fixed;left:0;top:0;bottom:0;width:286px;box-sizing:border-box;z-index:20;display:grid;grid-template-rows:auto 1fr auto;gap:12px;
+  .sidebar{position:fixed;left:0;top:0;bottom:0;width:286px;box-sizing:border-box;z-index:20;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:10px;
     padding:calc(env(safe-area-inset-top,0px) + 16px) 12px 14px;border-right:1px solid var(--line);
     background:var(--glass);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur)}
   .sidebar .sitebtn{width:100%;justify-content:flex-start}
   .sidebar .sitebtn svg.i{margin-left:auto}
   .snav{display:grid;gap:1px;align-content:start;overflow:auto;margin:0 -4px;padding:0 4px}
-  .snav .h{font-size:12px;font-weight:650;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:14px 12px 4px}
-  .snav a{display:flex;align-items:center;gap:12px;min-height:44px;padding:0 12px;border-radius:14px;font-weight:600;font-size:16px;color:var(--fg);text-decoration:none}
+  .snav .h{font-size:11.5px;font-weight:650;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:10px 12px 2px}
+  .snav a{display:flex;align-items:center;gap:12px;min-height:38px;padding:0 12px;border-radius:12px;font-weight:600;font-size:15.5px;color:var(--fg);text-decoration:none}
+  .snav a svg.i{width:20px;height:20px}
+  /* If the list ever needs to scroll (a short window), fade its bottom edge so it's clear there's more. */
+  .snav.more{-webkit-mask-image:linear-gradient(#000 85%,transparent);mask-image:linear-gradient(#000 85%,transparent)}
   .snav a svg.i{color:var(--accent)}
   .snav a:hover{background:var(--sunk)}
   .snav a.on{background:var(--accent);color:var(--accent-ink)} .snav a.on svg.i{color:inherit}
@@ -343,3 +346,54 @@ section.panel.onlywide{display:none}
 .toggles input[type=checkbox]:checked::after{left:22px}
 .toggles input[type=checkbox]:disabled{opacity:.5}
 .toggles label strong{font-weight:650}
+
+/* ---------- motion and feedback ---------- */
+.toast{display:flex;align-items:center;gap:14px;max-width:calc(100vw - 32px);box-sizing:border-box;bottom:calc(env(safe-area-inset-bottom,0px) + 96px);z-index:30;white-space:nowrap}
+.toast span{overflow:hidden;text-overflow:ellipsis}
+.toast button{flex:none;border:0;background:none;font:inherit;font-weight:700;color:var(--accent);cursor:pointer;padding:4px 2px}
+.toast button:empty{display:none}
+@media (min-width:1024px){.toast{bottom:28px;left:calc(50% + 143px)}}
+.btn,.lrow,.xmain,.tab,.wday,.cd,.iconbtn,.addbtn,.fchip,.methods button,.sitebtn,.avatar,.call,.fab,.snav a,.mebox,.scard>.sec{transition:transform .16s cubic-bezier(.2,.8,.2,1),background-color .2s,color .2s,box-shadow .2s,opacity .2s}
+@media (prefers-reduced-motion:no-preference){
+  .btn:not(:disabled):active,.lrow:active,.xmain:not(:disabled):active,.tab:active,.wday:not(:disabled):active,.cd:not(.out):active,.iconbtn:not(:disabled):active,
+  .addbtn:active,.fchip:active,.methods button:active,.sitebtn:active,.avatar:active,.call:active,.fab:active,.mebox:active,button.scard-head:active,.scard>button.sec:active{transform:scale(.97)}
+  .enter{animation:ui-in .32s cubic-bezier(.2,.8,.2,1) both}
+  @keyframes ui-in{from{opacity:0;transform:translateY(10px)}}
+  .toast:not([hidden]){animation:ui-toast .4s cubic-bezier(.2,1.3,.4,1) both}
+  @keyframes ui-toast{from{opacity:0;transform:translate(-50%,18px) scale(.94)}}
+  .scard:not(.shut)>.secbody,.xmore.anim:not([hidden]),.advice,.result:not([hidden]),.formpanel:not([hidden]),.adup[open]>*:not(summary){animation:ui-open .28s cubic-bezier(.2,.8,.2,1)}
+  @keyframes ui-open{from{opacity:0;transform:translateY(-6px)}}
+  .scard .checks input.rc.pop,.badge.pop,.ring.pop{animation:ui-pop .3s cubic-bezier(.2,1.6,.4,1)}
+  @keyframes ui-pop{from{transform:scale(.6)}}
+  .fab:not([hidden]){animation:ui-rise .4s cubic-bezier(.2,1.2,.4,1)}
+  @keyframes ui-rise{from{opacity:0;transform:translateY(20px)}}
+  .signcard.done .big{animation:ui-pop .5s cubic-bezier(.2,1.6,.4,1)}
+  .xrow .xhead .chev svg{transition:transform .2s}
+}
+
+/* Section introductions: two lines on phones; tap to read the rest. */
+@media (max-width:759px){
+  .note.intro{display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer}
+  .note.intro.full{display:block}
+}
+
+/* File picker: the whole dashed area is the button (the real file input covers it, invisible). */
+.drop{position:relative;cursor:pointer}
+.drop input[type=file]{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+.drop .pick{display:inline-flex;align-items:center;min-height:40px;padding:0 16px;border-radius:99px;background:var(--tint);color:var(--accent);font-weight:700}
+.drop.has .pick{background:var(--ok-bg);color:var(--ok)}
+.drop:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+
+/* Allergens a menu item contains: large toggle chips instead of small checkboxes. */
+.alg{display:flex;flex-wrap:wrap;gap:8px;grid-template-columns:none}
+.alg label{position:relative;min-height:40px;padding:0 14px;border-radius:99px;background:var(--sunk);font-size:15px;font-weight:600;cursor:pointer;gap:6px}
+.alg label input{position:absolute;opacity:0;width:1px;height:1px;margin:0}
+.alg label:has(input:checked){background:var(--bad);color:#fff}
+.alg label:has(input:checked)::before{content:"✓";font-weight:800}
+.alg label:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
+
+/* Row subtitles may use two lines before they're cut off. */
+.xmain .t .s{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical}
+.xrow.open .xmain .t .s{display:block}
+button.step{border:0;background:none;padding:4px 0;margin:-4px 0;font:inherit;font-size:12px;font-weight:600;color:var(--muted);text-align:left;cursor:pointer;border-radius:8px}
+button.step.on{color:var(--ok)} button.step.now{color:var(--accent)}

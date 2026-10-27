@@ -190,7 +190,7 @@
     if (!user) { location.replace("/signin?next=/admin"); return; }
     if (user.role !== "admin") { location.replace("/"); return; }
     me = user;
-    $("#me").textContent = `Admin · signed in as ${user.name}`;
+    $("#me").textContent = "Admin";
     people = (await api("GET", "/api/admin/users")).users;
     render();
   })().catch((e) => { $("#people").textContent = e.message; });

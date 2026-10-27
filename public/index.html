@@ -194,7 +194,7 @@
       <p class="note">This site's allergen matrix or menu allergen sheet, so staff can open it here. The item list below is kept separately.</p>
       <div id="adUpload" class="stack" style="gap:10px">
         <div class="drop" id="adDrop">
-          <strong id="adDropText">Drop a PDF here, or choose one</strong>
+          <span class="pick">Choose a PDF</span><strong id="adDropText">or drop one here</strong>
           <span class="by">PDF only, up to 20 MB</span>
           <input type="file" id="adFile" accept="application/pdf,.pdf">
         </div>
@@ -218,12 +218,8 @@
   <!-- HACCP & RISK -->
   <div data-panel="plans" hidden>
     <div id="planListView" class="stack">
-      <section class="panel">
-        <div class="row spread"><h2>HACCP plans &amp; risk assessments</h2><span class="pill" id="plPill"></span></div>
-        <p class="note">Your HACCP plan and risk assessments as editable tables. Start a new one from a template.</p>
-        <div class="row" id="plNewRow"><button class="btn ghost" id="plNewHaccp">New HACCP plan</button><button class="btn ghost" id="plNewRisk">New risk assessment</button></div>
-        <div id="plList"></div>
-      </section>
+      <p class="note intro">Your HACCP plan and risk assessments as editable tables. Tap Add to start one from a template.</p>
+      <div class="list glass" id="plList"></div>
     </div>
     <div id="planEditView" class="stack" hidden></div>
   </div>
@@ -248,12 +244,8 @@
   <!-- ONBOARDING -->
   <div data-panel="onboarding" hidden>
     <div id="obListView" class="stack">
-      <section class="panel">
-        <div class="row spread"><h2>Onboarding documents</h2><span class="pill" id="obPill"></span></div>
-        <p class="note">Staff handbooks, induction checklists, policies and procedures. Start from a template and edit it here. Everyone with access to the diary can read these, so leave out personal details such as bank, National Insurance or medical information.</p>
-        <div class="row" id="obNewRow"><button class="btn ghost" id="obNewInduction">New induction checklist</button><button class="btn ghost" id="obNewBlank">New blank document</button></div>
-        <div id="obList"></div>
-      </section>
+      <p class="note intro">Staff handbooks, induction checklists, policies and procedures. Everyone with access to the diary can read these, so leave out personal details such as bank, National Insurance or medical information.</p>
+      <div class="list glass" id="obList"></div>
     </div>
     <div id="obEditView" class="stack" hidden></div>
   </div>

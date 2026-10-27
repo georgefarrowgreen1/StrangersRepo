@@ -146,6 +146,7 @@ test("staff journey on the real page", async () => {
 
   // Upload an allergen PDF and open it.
   const pdf = Buffer.from("%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n");
+  await page.locator("#adList button", { hasText: "Upload" }).click();
   await page.setInputFiles("#adFile", { name: "allergen-matrix.pdf", mimeType: "application/pdf", buffer: pdf });
   await page.fill("#adTitle", "Allergen matrix");
   await page.click("#adSave");

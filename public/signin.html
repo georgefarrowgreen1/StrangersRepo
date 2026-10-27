@@ -137,7 +137,7 @@
       <div class="field">
         <label for="scode">Setup code</label>
         <input type="text" id="scode" autocomplete="off" autocapitalize="none" spellcheck="false" required>
-        <p class="note">The sync token saved in Cloudflare (Settings → Variables and Secrets → SYNC_TOKEN).</p>
+        <p class="note">The SETUP_CODE secret saved in Cloudflare (the Worker → Settings → Variables and Secrets).</p>
       </div>
       <p class="err" id="serr" role="alert"></p>
       <button class="btn" type="submit">Create admin account</button>
@@ -163,7 +163,7 @@
       <div class="field">
         <label for="rcode">Setup code</label>
         <input type="text" id="rcode" autocomplete="off" autocapitalize="none" spellcheck="false" required>
-        <p class="note">The sync token saved in Cloudflare (Settings → Variables and Secrets → SYNC_TOKEN).</p>
+        <p class="note">The SETUP_CODE secret saved in Cloudflare (the Worker → Settings → Variables and Secrets).</p>
       </div>
       <p class="err" id="rerr" role="alert"></p>
       <button class="btn" type="submit">Reset password and sign in</button>

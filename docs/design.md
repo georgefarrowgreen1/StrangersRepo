@@ -17,7 +17,19 @@ How the Kitchen Diary looks and why, for anyone changing it. The style follows A
 - **List sections** (cleaning, extra checks, allergens, suppliers, contacts, staff training) list items as rows that open in place for details, history and Edit. Their add/edit form stays closed until someone taps **Add …** in the page heading or **Edit** on a row; it closes on save or Cancel.
 - **Quick actions sit on the row**: Done on a cleaning job, a call button on a contact or supplier, "Trained today" on a training topic.
 - **Wide-only views**: the full allergen chart and the staff training chart need the width, so they only show from 1024 px; phones get the lists.
+- **Undo instead of "are you sure"**: Done on a job and Tick all show a toast with **Undo** for 5 seconds; sign-off has its own Undo. Deleting still asks twice (tap Remove, then confirm).
+- **The Add button** in the heading opens a section's form, starts a document directly, or shows a short menu when there's a choice (HACCP plan or risk assessment).
+- **Records and More rows show live status** (what's overdue, the last result, how many items), so people can see where to go without opening each section.
+- **Intros** are two lines on phones; tapping shows the rest.
 - **Status colours**: green done or in range, amber part done or due, red missed, overdue or out of range. Status is never colour alone: each also has text or an icon.
+
+## Motion
+
+Short and purposeful, and all of it is off with Reduce Motion:
+- A section slides up slightly as it opens; cards, rows and forms ease open.
+- Buttons, rows and tabs press down slightly when tapped.
+- A tick, or a card's badge, pops once when it becomes done (on this device or another), not on every refresh.
+- The toast rises above the tab bar; the sign-off button rises into place when the day is ready.
 
 ## Styles
 
