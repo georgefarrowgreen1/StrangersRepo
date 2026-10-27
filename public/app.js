@@ -185,107 +185,187 @@ function checklist(box,checks,items,prefix,onToggle){
   if(!checks.length)box.append(el("li",{class:"empty",text:"No checks set up. Add them in Setup."}));
 }
 
-/* ---------- daily ---------- */
+/* ---------- section cards (Today and Week) ---------- */
+// Each card has a header that opens and closes it. Unless someone has opened or closed it, a card is
+// open while it still has something to do and closes once it's done.
+const secOpen={};
+function ringEl(n,t){
+  const r=15,c=2*Math.PI*r,f=t?Math.min(1,n/t):0;
+  const w=el("span",{class:"ring","aria-hidden":"true"});
+  w.innerHTML=`<svg viewBox="0 0 34 34"><circle cx="17" cy="17" r="${r}" fill="none" stroke="var(--sunk)" stroke-width="3.5"/><circle cx="17" cy="17" r="${r}" fill="none" stroke="var(--accent)" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="${c*f} ${c}"${f?"":` stroke-opacity="0"`}/></svg>`;
+  w.append(el("span",{text:String(n)}));return w;
+}
+const badgeEl=(state,ic)=>{const b=el("span",{class:"badge "+(state||""),"aria-hidden":"true"});b.append(svgi(ICON[ic||(state==="done"?"check":state==="bad"?"warn":"dot")]||""));return b};
+function secCard(card,key,done,mark,title,sub){
+  const k=key+":"+(key==="weekly"||key==="wknotes"?S.week:S.date);
+  const open=k in secOpen?secOpen[k]:!done;
+  const h=card.querySelector(".sec");
+  h.replaceChildren(mark,el("span",{class:"t"},el("b",{text:title}),el("span",{class:"s",text:sub||""})),el("span",{class:"chev"},svgi(ICON.chevD)));
+  h.setAttribute("aria-expanded",String(open));card.classList.toggle("shut",!open);
+  h.onclick=()=>{secOpen[k]=!open;key==="weekly"||key==="wknotes"?renderWeek():renderDay()};
+}
+function openSec(card,key){secOpen[key+":"+(key==="weekly"||key==="wknotes"?S.week:S.date)]=true}
+// Ticks for a list of checks, with "Tick all" (recorded as allDone, the "All checks completed" confirmation).
+function checkFoot(foot,list,items,part,onAll){
+  foot.replaceChildren();
+  const left=list.filter(c=>!items[c.id]).length;
+  if(!list.length){foot.append(el("span",{class:"s",text:"No checks set up. Add them in Setup."}));return}
+  const who=part&&part.allDone?`Confirmed by ${nameOf(part.allDone.by)} at ${time(part.allDone.at)}`:part&&part.at?`Last ticked ${time(part.at)} by ${nameOf(part.by)}`:"";
+  foot.append(el("span",{class:"s",text:left?`${left} left${who?" · "+who:""}`:who||"All ticked"}));
+  if(left&&!ro())foot.append(el("button",{class:"btn ghost sm",type:"button",onclick:onAll},svgi(ICON.check),`Tick all ${left===list.length?list.length:""}`.trim()));
+}
+function roundChecks(box){box.querySelectorAll("input[type=checkbox]").forEach(x=>x.classList.add("rc"))}
+const firstName=n=>String(n||"").trim().split(/\s+/)[0]||"you";
+function setFab(btn,show,label,onclick){
+  btn.hidden=!show;if(!show)return;
+  btn.replaceChildren(el("span",{class:"avatar",text:initials(S.myName)}),el("span",{text:label}));btn.onclick=onclick;
+}
+function updFab(){document.body.classList.toggle("hasfab",[...document.querySelectorAll(".fab")].some(b=>!b.hidden&&!b.closest("[hidden]")))}
+
+/* ---------- today ---------- */
 function renderDay(){
   const ae=document.activeElement,keep=ae&&ae.id&&ae.closest&&ae.closest("#units")?{id:ae.id,v:ae.value}:null;
   try{renderDayInner()}finally{if(keep){const n=document.getElementById(keep.id);if(n){n.value=keep.v;n.focus()}}}
+  updFab();
 }
+const stepsOf=(st,temps)=>[["Temps",temps?st.temps==="y":true],["Opening",st.open==="y"],["Closing",st.close==="y"],["Sign off",!!st.signed]];
 function renderDayInner(){
-  const d=S.days[S.date]||{},s=S.cfg;
-  $("#dayDate").value=S.date;
-  const st=dayStatus(d);
+  const d=S.days[S.date]||{},s=S.cfg,st=dayStatus(d),R=ro(),isToday=S.date===today();
+  $("#dayDate").value=S.date;$("#dayDate").max=today();$("#dayNext").disabled=S.date>=today();
+  $("#todayBtn").hidden=isToday;
+  const ids=[];
+  // progress
+  const steps=stepsOf(st,s.units.length),nDone=steps.filter(x=>x[1]).length,next=steps.find(x=>!x[1]);
+  $("#daySteps").replaceChildren(
+    el("div",{class:"head"},el("b",{text:d.signed?"Day signed off":nDone?`${nDone} of 4 done`:"Start with "+steps[0][0].toLowerCase().replace("temps","temperatures")}),
+      el("span",{class:"pill "+(d.signed?"ok":next&&next[0]==="Sign off"?"ok":"acc"),text:d.signed?"Complete":next?(next[0]==="Sign off"?"Ready to sign off":next[0]+" next"):""})),
+    el("div",{class:"steprow"},...steps.map(([t,ok])=>el("div",{class:"step"+(ok?" on":next&&next[0]===t?" now":"")},el("i"),el("span",{text:t})))));
+  // anything overdue at this site (today only)
+  const al=$("#dayAlerts");al.replaceChildren();
+  const a=isToday&&S.db?siteAttention(S.site):null;
+  if(a&&a.unused){
+    al.append(alertEl("Not in use yet",`Nothing is counted as missing at the ${curSite().name} until it starts.`,canTab("setup")?["Set up",()=>show("setup")]:null,""));
+  }else if(a){
+    if(a.prevDue){const ps=a.pst,gaps=[];if(ps.open!=="y")gaps.push("opening");if(ps.tN<ps.tTot)gaps.push("temps");if(ps.close!=="y")gaps.push("closing");
+      al.append(alertEl(`${nice(a.prev)} wasn't signed off`,gaps.length?"Still to do: "+gaps.join(", "):"Everything was ticked; it just needs signing",["Open",()=>goDay(a.prev)]))}
+    for(const{kind,t,ts}of a.tasks)
+      al.append(alertEl(t.name,`${kind==="cleaning"?"Cleaning":"Extra check"} · ${(t.freq||"").replace(/^./,c=>c.toUpperCase())} · ${ts.text.toLowerCase()}`,R?null:["Done",()=>completeTask(kind,t,a.id,"")]));
+  }
   const cn=$("#closedNote");cn.hidden=!isClosed(S.date);cn.textContent=`${curSite().name} is set as closed on ${parse(S.date).toLocaleDateString("en-GB",{weekday:"long"})}s. You can still record checks if it opened.`;
   const info=S.settings.info||{};
   $("#siteNotePanel").hidden=!info.note;$("#siteNoteTitle").textContent=`${curSite().name} notes`;
   $("#siteNote").replaceChildren(renderBody(info.note||""));
-  $("#tempsPanel").hidden=!s.units.length&&!S.settings.fresh;
-  const mk=(lbl,state)=>el("span",{class:"pill "+(state==="y"?"ok":state==="x"?"bad":state==="p"?"warn":"")},lbl);
-  $("#dayPills").replaceChildren(mk(`Opening ${st.oN}/${s.opening.length}`,st.open),mk(`Temps ${st.tN}/${st.tTot}`,st.temps),mk(`Closing ${st.cN}/${s.closing.length}`,st.close),mk(d.signed?"Signed":"Not signed",st.signed));
-  const units=$("#units");units.replaceChildren();const ids=[];
+  // temperatures
+  const tc=$("#tempsCard");tc.hidden=!s.units.length&&!S.settings.fresh;
+  const units=$("#units");units.replaceChildren();const bad=[],chips=[];let last=null;
   for(const u of s.units){
-    const r=d.temps&&d.temps[u.id]&&d.temps[u.id].am;const v=r&&r.v!=null?r.v:"";if(r)ids.push(r.by);
-    const id=`t_${u.id}`;
-    const inp=el("input",{type:"number",step:"0.1",inputmode:"decimal",id,value:v,placeholder:"°C",disabled:ro(),"aria-label":`${u.name} temperature °C`});
-    const box=el("div",{class:"read "+tempState(u.kind,v===""?null:v)},el("label",{class:"label",for:id,text:"Reading °C"}),inp,el("span",{class:"by",text:r?`${time(r.at)} · ${nameOf(r.by)}`:""}));
-    inp.addEventListener("input",()=>{box.className="read "+tempState(u.kind,inp.value===""?null:Number(inp.value))});
+    const r=d.temps&&d.temps[u.id]&&d.temps[u.id].am;const v=r&&r.v!=null?r.v:"";if(r){ids.push(r.by);if(!last||r.at>last.at)last=r}
+    const id=`t_${u.id}`,cls=tempState(u.kind,v===""?null:v);
+    if(cls==="bad")bad.push([u,v]);
+    if(v!=="")chips.push(el("span",{class:"chip "+cls,text:`${u.name} ${v}°`}));
+    const inp=el("input",{type:"number",step:"0.1",inputmode:"decimal",id,value:v,placeholder:"°C",disabled:R,"aria-label":`${u.name} temperature °C`});
+    const mark=el("span",{class:"st","aria-hidden":"true"});
+    const row=el("div",{class:"tf "+cls},el("label",{class:"n",for:id,text:u.name}),el("span",{class:"lim",text:(u.kind==="freezer"?"−18°C or colder":"5°C or below")+(r?` · ${time(r.at)}, ${nameOf(r.by)}`:"")}),el("span",{class:"v"},inp,mark));
+    const paint=()=>{const c=tempState(u.kind,inp.value===""?null:Number(inp.value));row.className="tf "+c;mark.replaceChildren(c==="ok"?svgi(ICON.check):c==="bad"||c==="warn"?svgi(ICON.warn):"")};
+    paint();inp.addEventListener("input",paint);
     inp.addEventListener("change",()=>{
       const raw=inp.value.trim();const val=raw===""?null:Math.round(Number(raw)*10)/10;
       if(raw!==""&&!isFinite(val))return;
       patchDay(S.date,{temps:{[u.id]:{am:val==null?null:{v:val,...stamp()}}}});
-      if(tempState(u.kind,val)==="bad")toast(`${u.name} is out of range. Note what you did under Problems.`);
     });
-    units.append(el("div",{class:"unit"},el("div",{class:"row spread"},el("h3",{text:u.name}),el("span",{class:"lim",text:u.kind==="freezer"?"−18°C or colder":"5°C or below"})),box));
+    units.append(row);
   }
   if(!s.units.length)units.append(el("div",{class:"empty",text:"No fridges or freezers set up yet. Add them in Setup."}));
-  for(const[key,list,sel,bySel,word]of[["opening",s.opening,"#openList","#openBy","opening"],["closing",s.closing,"#closeList","#closeBy","closing"]]){
-    const part=d[key]||{};const items=part.items||{};
-    checklist($(sel),list,items,key,(cid,v)=>patchDay(S.date,{[key]:{items:{[cid]:v},...stamp(),...(v?{}:{allDone:null})}}));
-    if(part.by)ids.push(part.by);
-    $(bySel).textContent=part.at?`Last ticked ${time(part.at)} by ${nameOf(part.by)}`:"";
-    const all=list.length>0&&list.every(c=>items[c.id]);
-    const id="all_"+key;
-    const cb=el("input",{type:"checkbox",id,disabled:ro()||!list.length});cb.checked=all;
-    cb.addEventListener("change",()=>{
-      const set={};for(const c of list)set[c.id]=cb.checked;
-      patchDay(S.date,{[key]:{items:set,...stamp(),allDone:cb.checked?stamp():null}});
-      if(cb.checked)toast(`All ${word} checks marked complete`);
-    });
-    if(part.allDone&&part.allDone.by)ids.push(part.allDone.by);
-    const who=all&&part.allDone?`Confirmed by ${nameOf(part.allDone.by)} at ${time(part.allDone.at)}`:all?"Every check ticked":`${list.filter(c=>items[c.id]).length} of ${list.length} ticked`;
-    $(sel).append(el("li",{class:"alldone"+(all?" on":"")},el("label",{for:id},cb,el("span",{},el("strong",{text:`All ${word} checks completed`}),el("span",{class:"by",text:who})))));
+  const adv=$("#tempAdvice");adv.replaceChildren();
+  if(bad.length){
+    const[u,v]=bad[0];
+    adv.append(el("div",{class:"advice"},el("b",{text:bad.length>1?`${bad.length} readings out of range`:`${u.name} is out of range (${v}°C)`}),
+      el("span",{text:`Move high-risk food to a unit that's in range, check the door seal and setting, then take the reading again in 30 minutes. If it's still ${u.kind==="freezer"?"above −15°C":"above 8°C"}, call the engineer and decide what to throw away.`}),
+      R?null:el("button",{class:"btn ghost sm",type:"button",onclick:()=>{openSec($("#probCard"),"problems");renderDay();const pb=$("#problems");if(!pb.value)pb.value=`${u.name} read ${v}°C at ${time(Date.now())}. `;pb.focus();pb.scrollIntoView({block:"center",behavior:"smooth"})}},"Write down what you did")));
   }
-  const pb=$("#problems");if(document.activeElement!==pb)pb.value=(d.problems&&d.problems.text)||"";
-  pb.disabled=ro();$("#saveProb").disabled=ro();
+  const tDone=st.tN>=st.tTot&&st.tTot>0;
+  secCard(tc,"temps",tDone&&!bad.length,bad.length?badgeEl("bad"):tDone?badgeEl("done"):ringEl(st.tN,st.tTot),"Temperatures",
+    bad.length?"Out of range: needs action":tDone?`All in range${last?` · ${time(last.at)}, ${nameOf(last.by)}`:""}`:st.tN?`${st.tN} of ${st.tTot} taken`:"Fridges 5°C or below · freezers −18°C or colder");
+  const tch=$("#tempChips");tch.replaceChildren(...chips);tch.hidden=!tc.classList.contains("shut")||!chips.length;
+  // opening and closing
+  for(const[key,list,card,box,foot,title]of[["opening",s.opening,"#openCard","#openList","#openFoot","Opening checks"],["closing",s.closing,"#closeCard","#closeList","#closeFoot","Closing checks"]]){
+    const part=d[key]||{};const items=part.items||{};
+    checklist($(box),list,items,key,(cid,v)=>patchDay(S.date,{[key]:{items:{[cid]:v},...stamp(),...(v?{}:{allDone:null})}}));roundChecks($(box));
+    if(part.by)ids.push(part.by);if(part.allDone&&part.allDone.by)ids.push(part.allDone.by);
+    const n=list.filter(c=>items[c.id]).length,all=list.length>0&&n===list.length;
+    checkFoot($(foot),list,items,part,()=>{const set={};for(const c of list)set[c.id]=true;patchDay(S.date,{[key]:{items:set,...stamp(),allDone:stamp()}});toast(`All ${key} checks done`)});
+    secCard($(card),key,all,all?badgeEl("done"):ringEl(n,list.length),title,
+      all?`${n} of ${n}${part.allDone||part.at?` · ${nameOf((part.allDone||part).by)}, ${time((part.allDone||part).at)}`:""}`:n?`${n} of ${list.length} ticked`:key==="closing"?`After close · ${list.length} checks`:`${list.length} checks`);
+  }
+  // problems
+  const pb=$("#problems"),pt=(d.problems&&d.problems.text)||"";if(document.activeElement!==pb)pb.value=pt;
+  pb.disabled=R;$("#saveProb").disabled=R;
   if(d.problems&&d.problems.by)ids.push(d.problems.by);
   $("#probBy").textContent=d.problems&&d.problems.at?`Saved ${time(d.problems.at)} by ${nameOf(d.problems.by)}`:"";
-  const sa=$("#signArea");sa.replaceChildren();
-  const sn=$("#signName");$("#signNameWrap").hidden=!!d.signed||ro();
-  if(document.activeElement!==sn&&!sn.value){try{sn.value=localStorage.getItem("sfbb.signName")||""}catch(e){}}
+  secCard($("#probCard"),"problems",true,badgeEl("acc","pen"),"Problems & changes",pt?pt.split("\n")[0]:bad.length?"Note what you did about the reading":"Optional · nothing noted");
+  // sign off
+  const sc=$("#signCard");sc.replaceChildren();
+  const missing=steps.slice(0,3).filter(x=>!x[1]).map(x=>x[0].toLowerCase().replace("temps","temperatures")+(x[0]==="Temps"?"":" checks"));
+  const sign=()=>patchDay(S.date,{signed:{...stamp(),name:S.myName}});
   if(d.signed){
     ids.push(d.signed.by);
-    const who=d.signed.name||nameOf(d.signed.by);
-    sa.append(el("span",{class:"pill ok",text:`Signed by ${who} at ${time(d.signed.at)}${d.signed.at&&iso(new Date(d.signed.at))!==S.date?" on "+short(iso(new Date(d.signed.at))):""}`}));
-    if(!ro())sa.append(el("button",{class:"btn ghost",onclick:()=>patchDay(S.date,{signed:null})},"Undo sign-off"));
+    const who=d.signed.name||nameOf(d.signed.by),on=d.signed.at&&iso(new Date(d.signed.at))!==S.date?" on "+short(iso(new Date(d.signed.at))):"";
+    sc.className="scard glass signcard done";
+    sc.append(el("span",{class:"big"},svgi(ICON.check)),el("h2",{text:"Day signed off"}),el("span",{class:"s",text:`By ${who} at ${time(d.signed.at)}${on}`}),
+      R?null:el("button",{class:"btn ghost sm",type:"button",onclick:()=>patchDay(S.date,{signed:null})},"Undo sign-off"));
   }else{
-    const missing=[];if(st.open!=="y")missing.push("opening checks");if(st.tN<st.tTot)missing.push("temperatures");if(st.close!=="y")missing.push("closing checks");
-    const msg=el("span",{class:"by",text:missing.length?"Still to do: "+missing.join(", "):""});
-    sa.append(el("button",{class:"btn",disabled:ro(),onclick:()=>{
-      const name=sn.value.trim();
-      if(!name){msg.textContent="Enter your name to sign off.";sn.focus();return}
-      try{localStorage.setItem("sfbb.signName",name)}catch(e){}
-      patchDay(S.date,{signed:{...stamp(),name}});
-    }},S.date===today()?"Sign off today":"Sign off "+nice(S.date)),msg);
+    sc.className="scard glass signcard";
+    sc.append(el("div",{class:"sec"},badgeEl(missing.length?"":"acc",missing.length?"lock":"pen"),el("span",{class:"t"},el("b",{text:"Sign off"}),
+      el("span",{class:"s",text:missing.length?"Still to do: "+missing.join(", "):`Confirms the day's checks were done. Signs as ${S.myName||"you"}.`}))));
+    if(missing.length&&!R)sc.append(el("div",{class:"secfoot"},el("span",{class:"s",text:"Couldn't do everything? Say why under Problems, then sign off."}),
+      el("button",{class:"btn ghost sm",type:"button",onclick:()=>{
+        if(!pt.trim()){openSec($("#probCard"),"problems");renderDay();$("#problems").focus();toast("Write what was missed under Problems first.");return}
+        sign();
+      }},"Sign off anyway")));
   }
+  setFab($("#signFab"),!d.signed&&!missing.length&&!R,`Sign off as ${firstName(S.myName)}`,sign);
   resolveNames(ids);
+}
+function alertEl(title,sub,action,cls){
+  return el("div",{class:"alert "+(cls==null?"":cls)},el("span",{class:"ic"},svgi(ICON.warn)),el("span",{class:"t"},el("b",{text:title}),el("span",{class:"s",text:sub})),
+    action?el("button",{class:"btn sm",type:"button",onclick:action[1]},action[0]):null);
 }
 
 /* ---------- week ---------- */
 function renderWeek(){
-  const wk=S.week,w=S.weeks[wk]||{},list=S.cfg.weekly||[],items=w.items||{};
-  $("#wkLabel").textContent=`Week of ${nice(wk)} – ${nice(addDays(wk,6))}`;
-  const n=list.filter(c=>items[c.id]).length;
-  const p=$("#wkPill");p.textContent=w.signed?"Signed":`${n}/${list.length} done`;p.className="pill "+(w.signed?"ok":n?"warn":"");
-  checklist($("#wkList"),list,items,"wk",(cid,v)=>patchWeek(wk,{items:{[cid]:v},...stamp()}));
-  $("#wkBy").textContent=w.at?`Last ticked ${when(w.at)} by ${nameOf(w.by)}`:"";
-  const nt=$("#wkNotes");if(document.activeElement!==nt)nt.value=(w.notes&&w.notes.text)||"";
-  nt.disabled=ro();$("#wkSaveNote").disabled=ro();
-  $("#wkNoteBy").textContent=w.notes&&w.notes.at?`Saved ${when(w.notes.at)} by ${nameOf(w.notes.by)}`:"";
-  const sa=$("#wkSign");sa.replaceChildren();
-  const sn=$("#wkSignName");$("#wkSignNameWrap").hidden=!!w.signed||ro();
-  if(document.activeElement!==sn&&!sn.value){try{sn.value=localStorage.getItem("sfbb.signName")||""}catch(e){}}
-  if(w.signed){
-    sa.append(el("span",{class:"pill ok",text:`Signed by ${w.signed.name||nameOf(w.signed.by)} on ${when(w.signed.at)}`}));
-    if(!ro())sa.append(el("button",{class:"btn ghost",onclick:()=>patchWeek(wk,{signed:null})},"Undo sign-off"));
-  }else{
-    const msg=el("span",{class:"by",text:n<list.length?`${list.length-n} check${list.length-n===1?"":"s"} still to do`:""});
-    sa.append(el("button",{class:"btn",disabled:ro(),onclick:()=>{
-      const name=sn.value.trim();
-      if(!name){msg.textContent="Enter your name to sign off.";sn.focus();return}
-      try{localStorage.setItem("sfbb.signName",name)}catch(e){}
-      patchWeek(wk,{signed:{...stamp(),name}});
-    }},"Sign off this week"),msg);
-  }
+  const wk=S.week,w=S.weeks[wk]||{},list=S.cfg.weekly||[],items=w.items||{},R=ro();
   $("#wkNext").disabled=wk>=monday(today());
+  // the seven days, each with how complete it was
+  const strip=$("#weekDays");strip.replaceChildren();
+  for(let i=0;i<7;i++){
+    const date=addDays(wk,i),dd=S.days[date],st=dayStatus(dd),t=today();
+    const cls=date===t?"today":date>t?"future":dd&&dd.signed&&st.complete?"ok":st.any?"part":isClosed(date)?"closed":"bad";
+    const lbl=parse(date).toLocaleDateString("en-GB",{weekday:"short"});
+    strip.append(el("button",{class:"wday "+cls,type:"button",disabled:date>t,"aria-label":`${nice(date)}: ${cls==="ok"?"signed off":cls==="part"?"partly done":cls==="bad"?"nothing recorded":cls==="closed"?"closed":""}`,onclick:()=>goDay(date)},
+      el("span",{text:lbl.slice(0,1)}),el("b",{text:String(parse(date).getDate())}),el("span",{class:"d"})));
+  }
+  const n=list.filter(c=>items[c.id]).length,all=list.length>0&&n===list.length;
+  checklist($("#wkList"),list,items,"wk",(cid,v)=>patchWeek(wk,{items:{[cid]:v},...stamp()}));roundChecks($("#wkList"));
+  checkFoot($("#wkFoot"),list,items,w,()=>{const set={};for(const c of list)set[c.id]=true;patchWeek(wk,{items:set,...stamp()});toast("All end-of-week checks done")});
+  secCard($("#wkCard"),"weekly",all,all?badgeEl("done"):ringEl(n,list.length),"End-of-week checks",
+    all?`${n} of ${n}${w.at?` · ${nameOf(w.by)}, ${when(w.at)}`:""}`:n?`${n} of ${list.length} ticked`:"Do these after the last shift of the week");
+  const nt=$("#wkNotes"),ntx=(w.notes&&w.notes.text)||"";if(document.activeElement!==nt)nt.value=ntx;
+  nt.disabled=R;$("#wkSaveNote").disabled=R;
+  $("#wkNoteBy").textContent=w.notes&&w.notes.at?`Saved ${when(w.notes.at)} by ${nameOf(w.notes.by)}`:"";
+  secCard($("#wkNoteCard"),"wknotes",true,badgeEl("acc","pen"),"Notes for the week",ntx?ntx.split("\n")[0]+(w.notes.by?` · ${nameOf(w.notes.by)}`:""):"Optional · pests, maintenance, anything to follow up");
+  const sc=$("#wkSignCard");sc.replaceChildren();
+  const sign=()=>patchWeek(wk,{signed:{...stamp(),name:S.myName}});
+  if(w.signed){
+    sc.className="scard glass signcard done";
+    sc.append(el("span",{class:"big"},svgi(ICON.check)),el("h2",{text:"Week signed off"}),el("span",{class:"s",text:`By ${w.signed.name||nameOf(w.signed.by)} on ${when(w.signed.at)}`}),
+      R?null:el("button",{class:"btn ghost sm",type:"button",onclick:()=>patchWeek(wk,{signed:null})},"Undo sign-off"));
+  }else{
+    sc.className="scard glass signcard";
+    sc.append(el("div",{class:"sec"},badgeEl(all?"acc":"",all?"pen":"lock"),el("span",{class:"t"},el("b",{text:"Sign off the week"}),
+      el("span",{class:"s",text:all?`Signs as ${S.myName||"you"}.`:`Unlocks when the ${list.length-n===1?"last check is":`${list.length-n} checks are`} done`}))));
+  }
+  setFab($("#wkSignFab"),!w.signed&&all&&!R,`Sign off week as ${firstName(S.myName)}`,sign);
+  updFab();
   resolveNames([w.by,w.signed&&w.signed.by,w.notes&&w.notes.by]);
 }
 
@@ -1671,59 +1751,7 @@ function siteAttention(id){
   return{id,s,cfg,t,st,closedToday,prev,pd,pst,tasks,openDue,prevDue,unused,start,count:(openDue?1:0)+(prevDue?1:0)+tasks.length};
 }
 function dueDate(t){const n=FREQ[t.freq],b=t.lastAt||t.importedAt;if(!b||!n)return"";const d=new Date(b);d.setDate(d.getDate()+n);return iso(d)}
-function goDay(date,anchor){
-  S.date=date;show("day");renderDay();renderHead();
-  requestAnimationFrame(()=>{const n=$(anchor||"#openList");if(n)n.scrollIntoView({behavior:"smooth",block:"center"})});
-}
-function attRow(siteName,title,sub,pill,actions){
-  return el("div",{class:"att-row"},
-    el("div",{class:"what"},el("strong",{},el("span",{class:"sitetag",text:siteName}),title),sub?el("span",{class:"by",text:sub}):null),
-    el("div",{class:"act"},pill,...actions));
-}
-function renderAttention(){
-  const box=$("#attList"),panel=$("#attention");
-  panel.hidden=!S.db||S.tab!=="day";if(!S.db)return;
-  const site=curSite(),a=siteAttention(S.site);
-  $("#attTitle").textContent=`${site.name}: needs attention`;
-  box.replaceChildren();
-  const pill=$("#attPill");
-  if(!a){pill.textContent="Loading…";pill.className="pill";return}
-  pill.textContent=a.unused?"Not started":a.count?`${a.count} to action`:"All clear";pill.className="pill "+(a.unused?"":a.count?"bad":"ok");
-  const R=ro(),tNice=nice(a.t);
-  const mk=(cls,text)=>el("span",{class:"pill "+cls,text});
-  const part=(n,tot,label)=>n>=tot?mk("ok","Done"):n?mk("warn",`${n} of ${tot} ticked`):mk(label==="close"?"warn":"bad",label==="close"?"Not done yet":"Not started");
-  if(a.unused){
-    box.append(attRow(site.name,"Not in use yet",`No diary entries or setup saved for the ${site.name} yet. Nothing is counted as missing until it starts.`,mk("","Not started"),
-      [el("button",{class:"btn ghost sm",onclick:()=>show("setup")},"Set up"),el("button",{class:"btn ghost sm",onclick:()=>goDay(a.t,"#openList")},"Open today")]));
-    return;
-  }
-  // opening & closing today
-  if(a.closedToday){
-    box.append(attRow(site.name,"Opening & closing checks",`Today, ${tNice}`,mk("","Closed today"),[]));
-  }else{
-    box.append(attRow(site.name,"Opening checks",`Today, ${tNice}`,a.cfg.opening.length?part(a.st.oN,a.cfg.opening.length,"open"):mk("","None set up"),
-      [el("button",{class:"btn ghost sm",onclick:()=>goDay(a.t,"#openList")},a.st.open==="y"?"View":"Open")]));
-    box.append(attRow(site.name,"Closing checks",`Today, ${tNice}`,a.cfg.closing.length?part(a.st.cN,a.cfg.closing.length,"close"):mk("","None set up"),
-      [el("button",{class:"btn ghost sm",onclick:()=>goDay(a.t,"#closeList")},a.st.close==="y"?"View":"Open")]));
-  }
-  // previous day sign-off
-  if(a.prev&&a.start&&a.prev>=a.start){
-    const sg=a.pd&&a.pd.signed;const ps=a.pst;
-    const gaps=[];if(ps.open!=="y")gaps.push(`opening ${ps.oN}/${a.cfg.opening.length}`);if(ps.close!=="y")gaps.push(`closing ${ps.cN}/${a.cfg.closing.length}`);if(ps.tN<ps.tTot)gaps.push(`temps ${ps.tN}/${ps.tTot}`);
-    box.append(attRow(site.name,"Previous day's sign-off",nice(a.prev)+(sg?` · signed by ${sg.name||nameOf(sg.by)}`:gaps.length?" · still to do: "+gaps.join(", "):""),
-      sg?mk("ok","Signed off"):mk("bad","Not signed off"),
-      sg?[]:[el("button",{class:"btn sm",disabled:R,onclick:()=>goDay(a.prev,"#signArea")},"Open & sign off")]));
-  }
-  // overdue cleaning jobs & extra checks
-  for(const{kind,t,ts}of a.tasks){
-    const due=dueDate(t);
-    box.append(attRow(site.name,`${kind==="cleaning"?"Cleaning":"Extra check"}: ${t.name}`,
-      [due?`Was due ${nice(due)}`:"Never recorded as done",t.lastAt?`last done ${when(t.lastAt)}`:"",(t.freq||"").replace(/^./,c=>c.toUpperCase()),t.who?"Who: "+t.who:""].filter(Boolean).join(" · "),
-      mk("bad",ts.text),
-      [el("button",{class:"btn sm",disabled:R,onclick:()=>completeTask(kind,t,a.id,"")},"Mark done"),el("button",{class:"btn ghost sm",onclick:()=>show(kind)},"Open")]));
-  }
-  if(!a.tasks.length&&tabOn("cleaning",a.s))box.append(attRow(site.name,"Cleaning schedule & extra checks","Nothing overdue",mk("ok","Up to date"),[]));
-}
+function goDay(date){S.date=date;show("day");renderDay();renderHead()}
 /* ---------- app chrome: sites, sections, account ---------- */
 const svgi=(d)=>{const n=document.createElementNS("http://www.w3.org/2000/svg","svg");n.setAttribute("viewBox","0 0 24 24");n.setAttribute("class","i");n.setAttribute("aria-hidden","true");n.innerHTML=d;return n};
 const ICON={
@@ -1747,6 +1775,8 @@ const ICON={
   chevD:'<path d="M6 9l6 6 6-6"/>',chevR:'<path d="M9 6l6 6-6 6"/>',chevL:'<path d="M15 6l-6 6 6 6"/>',
   key:'<circle cx="8" cy="15" r="4"/><path d="M11 12l8-8M16 7l3 3"/>',shield:'<path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9 12l2 2 4-4"/>',
   out:'<path d="M14 4h4a2 2 0 012 2v12a2 2 0 01-2 2h-4M10 16l-4-4 4-4M6 12h10"/>',
+  check:'<path d="M5 12.5l4.5 4.5L19 7.5"/>',warn:'<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17h.01"/>',dot:'',
+  pen:'<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',lock:'<rect x="5" y="11" width="14" height="10" rx="2.5"/><path d="M8 11V8a4 4 0 018 0v3"/>',
 };
 // Every section, in order. grp: where it lives (diary sections are tabs; records and manage are lists on phones).
 const NAV=[
@@ -2022,7 +2052,7 @@ $("#pubGo").addEventListener("click",async()=>{
   }catch(e){fail(e);pubNote="Publishing stopped part-way. Check each site's setup, then try again.";renderPublish()}
 });
 
-function renderAll(){renderSites();renderNav();renderHead();renderAttention();renderDay();renderWeek();renderHistory();renderTasks("extras");renderTasks("cleaning");renderProve();renderAllergenDocs();renderAllergens();renderPlansList();renderSuppliers();renderContacts();renderStaff();renderOnbList();renderInspList();renderReview();renderSetup()}
+function renderAll(){renderSites();renderNav();renderHead();renderDay();renderWeek();renderHistory();renderTasks("extras");renderTasks("cleaning");renderProve();renderAllergenDocs();renderAllergens();renderPlansList();renderSuppliers();renderContacts();renderStaff();renderOnbList();renderInspList();renderReview();renderSetup()}
 
 /* ---------- tabs ---------- */
 const TABS=["day","week","history","extras","cleaning","prove","allergens","eho","plans","suppliers","contacts","staff","onboarding","review","setup","records","more"];
@@ -2032,7 +2062,7 @@ function show(tab,opts){
   const changed=S.tab!==tab;
   S.tab=tab;
   document.querySelectorAll("[data-panel]").forEach(p=>p.hidden=p.dataset.panel!==tab);
-  $("#attention").hidden=tab!=="day"||!S.db;
+  $("#dayCtl").hidden=tab!=="day";$("#weekCtl").hidden=tab!=="week";updFab();
   renderHead();renderNav();
   if(changed&&!(opts&&opts.keepScroll))window.scrollTo({top:0});
   try{localStorage.setItem("sfbb.tab",tab)}catch(e){}
@@ -2040,8 +2070,9 @@ function show(tab,opts){
 // The large title, its subtitle and (on phones) a back link to Records or More.
 function renderHead(){
   const t=S.tab,n=navOf(t);
-  const title=t==="records"?"Records":t==="more"?"More":t==="day"?(S.date===today()?"Today":"Diary"):t==="week"?"This week":n?n.t:"";
-  const sub=t==="day"?parse(S.date).toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long"}):curSite().name;
+  const thisWk=S.week===monday(today());
+  const title=t==="records"?"Records":t==="more"?"More":t==="day"?(S.date===today()?"Today":S.date===addDays(today(),-1)?"Yesterday":"Diary"):t==="week"?(thisWk?"This week":"Week"):n?n.t:"";
+  const sub=t==="day"?parse(S.date).toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long"}):t==="week"?`${nice(S.week)} – ${nice(addDays(S.week,6))}`:curSite().name;
   $("#pageTitle").textContent=title;$("#pageSub").textContent=sub;
   const back=n&&n.grp==="records"?["records","Records"]:n&&n.grp==="manage"?["more","More"]:null;
   const bb=$("#backBtn");bb.hidden=!back;
@@ -2096,7 +2127,7 @@ function subscribeSite(){
 }
 function subscribeSummaries(){
   const err=()=>{};
-  const upd=()=>{renderSites();renderNav();renderAttention();renderPublish()};
+  const upd=()=>{renderSites();renderNav();if(S.tab==="day")renderDay();renderPublish()};
   for(const x of SITES){
     const sm=S.sum[x.id]={settings:normSettings(null),days:{},extras:[],cleaning:[],got:{}};
     const mark=k=>{sm.got[k]=true;sm.ready=["settings","days","extras","cleaning"].every(n=>sm.got[n]);upd()};
@@ -2110,10 +2141,11 @@ function subscribeSummaries(){
 /* ---------- events ---------- */
 $("#dayDate").addEventListener("change",e=>{if(e.target.value){S.date=e.target.value;renderDay();renderHead()}});
 $("#todayBtn").addEventListener("click",()=>{S.date=today();renderDay();renderHead()});
+$("#dayPrev").addEventListener("click",()=>{S.date=addDays(S.date,-1);renderDay();renderHead()});
+$("#dayNext").addEventListener("click",()=>{if(S.date<today()){S.date=addDays(S.date,1);renderDay();renderHead()}});
 $("#saveProb").addEventListener("click",async()=>{await patchDay(S.date,{problems:{text:$("#problems").value.trim(),...stamp()}});toast("Note saved")});
-$("#wkPrev").addEventListener("click",()=>{S.week=addDays(S.week,-7);renderWeek()});
-$("#wkNext").addEventListener("click",()=>{S.week=addDays(S.week,7);renderWeek()});
-$("#wkThis").addEventListener("click",()=>{S.week=monday(today());renderWeek()});
+$("#wkPrev").addEventListener("click",()=>{S.week=addDays(S.week,-7);renderWeek();renderHead()});
+$("#wkNext").addEventListener("click",()=>{S.week=addDays(S.week,7);renderWeek();renderHead()});
 $("#wkSaveNote").addEventListener("click",async()=>{await patchWeek(S.week,{notes:{text:$("#wkNotes").value.trim(),...stamp()}});toast("Note saved")});
 $("#algSave").addEventListener("click",async()=>{
   const name=$("#algName").value.trim();if(!name){$("#algConfirm").textContent="Give the item a name first.";return}

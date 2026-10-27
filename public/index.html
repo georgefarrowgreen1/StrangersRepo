@@ -44,92 +44,82 @@
 <div class="wrap" id="main">
   <div class="pagehead" id="pagehead">
     <button class="back" type="button" id="backBtn" hidden></button>
-    <div class="trow"><div class="ptitle"><h1 id="pageTitle">Today</h1><p id="pageSub"></p></div><div id="pageAction"></div></div>
+    <div class="trow"><div class="ptitle"><h1 id="pageTitle">Today</h1><p id="pageSub"></p></div><div id="pageAction">
+      <div class="headctl" id="dayCtl" hidden>
+        <button class="iconbtn" type="button" id="dayPrev" aria-label="Previous day"></button>
+        <input type="date" id="dayDate" aria-label="Diary date">
+        <button class="iconbtn" type="button" id="dayNext" aria-label="Next day"></button>
+      </div>
+      <div class="headctl" id="weekCtl" hidden>
+        <button class="iconbtn" type="button" id="wkPrev" aria-label="Previous week"></button>
+        <button class="iconbtn" type="button" id="wkNext" aria-label="Next week"></button>
+      </div>
+    </div></div>
   </div>
   <div id="ehoHead" hidden></div>
 
   <div class="banner" id="offline" hidden>The shared diary isn't available in this view. Open it from claude.ai while signed in to record entries.</div>
   <div class="banner" id="readonly" hidden>You can view this diary but not record entries. Ask the owner to give you Contributor access.</div>
 
-  <section class="panel" id="attention" aria-live="polite">
-    <div class="row spread"><h2 id="attTitle">Needs attention</h2><span class="pill" id="attPill"></span></div>
-    <div class="att" id="attList"></div>
-  </section>
 
 
   <!-- RECORDS and MORE: lists of sections (phones and tablets) -->
   <div data-panel="records" class="stack" hidden><div class="list glass" id="recordsHub"></div></div>
   <div data-panel="more" class="stack" hidden><div id="moreHub" class="stack"></div></div>
 
-  <!-- DAILY -->
+  <!-- TODAY: progress, anything overdue, then the day's sections in order -->
   <div data-panel="day" class="stack">
-    <div class="row spread">
-      <div class="row">
-        <label class="label" for="dayDate">Diary date</label>
-        <input type="date" id="dayDate" style="width:auto">
-        <button class="btn ghost" id="todayBtn">Today</button>
-      </div>
-      <div class="row" id="dayPills"></div>
-    </div>
+    <button class="pill acc backtoday" type="button" id="todayBtn" hidden>Back to today</button>
+    <div class="steps glass" id="daySteps"></div>
+    <div class="stack tight" id="dayAlerts"></div>
     <div class="banner" id="closedNote" hidden></div>
     <section class="panel" id="siteNotePanel" hidden>
       <h3 id="siteNoteTitle">Site notes</h3>
       <div class="docview" id="siteNote"></div>
     </section>
-    <section class="panel" id="tempsPanel">
-      <div class="row spread"><h2>Fridge &amp; freezer temperatures</h2><span class="note">Fridges 5°C or below (legal max 8°C) · Freezers −18°C or colder</span></div>
-      <div class="units" id="units"></div>
+    <section class="scard glass" id="tempsCard" data-sec="temps">
+      <button class="sec" type="button" aria-expanded="true" aria-controls="tempsBody"></button>
+      <div class="tchips" id="tempChips"></div>
+      <div class="secbody" id="tempsBody"><div class="temps" id="units"></div><div id="tempAdvice"></div></div>
     </section>
-    <div class="grid2">
-      <section class="panel">
-        <div class="row spread"><h2>Opening checks</h2><span class="by" id="openBy"></span></div>
-        <ul class="checks" id="openList"></ul>
+    <div class="cards2">
+      <section class="scard glass" id="openCard" data-sec="opening">
+        <button class="sec" type="button" aria-expanded="true" aria-controls="openBody"></button>
+        <div class="secbody" id="openBody"><ul class="checks" id="openList"></ul><div class="secfoot" id="openFoot"></div></div>
       </section>
-      <section class="panel">
-        <div class="row spread"><h2>Closing checks</h2><span class="by" id="closeBy"></span></div>
-        <ul class="checks" id="closeList"></ul>
+      <section class="scard glass" id="closeCard" data-sec="closing">
+        <button class="sec" type="button" aria-expanded="true" aria-controls="closeBody"></button>
+        <div class="secbody" id="closeBody"><ul class="checks" id="closeList"></ul><div class="secfoot" id="closeFoot"></div></div>
       </section>
     </div>
-    <section class="panel">
-      <h2>Problems &amp; changes</h2>
-      <p class="note">Write down anything that went wrong and what you did about it: a fridge reading out of range, a delivery rejected, a new supplier, a staff sickness.</p>
-      <textarea id="problems" placeholder="e.g. Fridge 2 read 9°C at 10:00. Moved stock to Fridge 1, rechecked at 10:30: 4°C. Door seal reported."></textarea>
-      <div class="row spread"><span class="by" id="probBy"></span><button class="btn ghost" id="saveProb">Save note</button></div>
+    <section class="scard glass" id="probCard" data-sec="problems">
+      <button class="sec" type="button" aria-expanded="false" aria-controls="probBody"></button>
+      <div class="secbody" id="probBody">
+        <p class="note">Anything that went wrong and what you did about it: a fridge reading out of range, a delivery rejected, a new supplier, a staff sickness.</p>
+        <textarea id="problems" aria-label="Problems and changes" placeholder="e.g. Fridge 2 read 9°C at 10:00. Moved stock to Fridge 1, rechecked at 10:30: 4°C. Door seal reported."></textarea>
+        <div class="row spread"><span class="by" id="probBy"></span><button class="btn ghost" id="saveProb">Save note</button></div>
+      </div>
     </section>
-    <section class="panel">
-      <h2>Sign off the day</h2>
-      <p class="note">By signing, you confirm the safe methods were followed today and the checks above are a true record.</p>
-      <div class="field" id="signNameWrap" style="max-width:360px"><label class="label" for="signName">Your name</label><input type="text" id="signName" autocomplete="name" placeholder="e.g. Sam Patel"></div>
-      <div class="signed" id="signArea"></div>
-    </section>
+    <section class="scard glass signcard" id="signCard"></section>
+    <button class="fab" type="button" id="signFab" hidden></button>
   </div>
 
   <!-- WEEK -->
   <div data-panel="week" class="stack" hidden>
-    <div class="row spread">
-      <div class="weeknav">
-        <button class="btn ghost sm" id="wkPrev" aria-label="Previous week">← Previous</button>
-        <strong id="wkLabel"></strong>
-        <button class="btn ghost sm" id="wkNext" aria-label="Next week">Next →</button>
-        <button class="btn ghost sm" id="wkThis">This week</button>
+    <div class="days glass" id="weekDays"></div>
+    <section class="scard glass" id="wkCard" data-sec="weekly">
+      <button class="sec" type="button" aria-expanded="true" aria-controls="wkBody"></button>
+      <div class="secbody" id="wkBody"><ul class="checks" id="wkList"></ul><div class="secfoot" id="wkFoot"></div></div>
+    </section>
+    <section class="scard glass" id="wkNoteCard" data-sec="wknotes">
+      <button class="sec" type="button" aria-expanded="false" aria-controls="wkNoteBody"></button>
+      <div class="secbody" id="wkNoteBody">
+        <textarea id="wkNotes" aria-label="Notes for the week" placeholder="e.g. Found mouse droppings behind the dry store shelving. Called pest control, visit booked for Tuesday."></textarea>
+        <div class="row spread"><span class="by" id="wkNoteBy"></span><button class="btn ghost" id="wkSaveNote">Save note</button></div>
       </div>
-      <span class="pill" id="wkPill"></span>
-    </div>
-    <section class="panel">
-      <div class="row spread"><h2>End-of-week checks</h2><span class="by" id="wkBy"></span></div>
-      <p class="note">Do these once a week, at the end of the last trading day. Edit the list in Setup.</p>
-      <ul class="checks" id="wkList"></ul>
     </section>
-    <section class="panel">
-      <h2>Notes for the week</h2>
-      <textarea id="wkNotes" placeholder="e.g. Found mouse droppings behind the dry store shelving. Called pest control, visit booked for Tuesday."></textarea>
-      <div class="row spread"><span class="by" id="wkNoteBy"></span><button class="btn ghost" id="wkSaveNote">Save note</button></div>
-    </section>
-    <section class="panel">
-      <h2>Sign off the week</h2>
-      <div class="field" id="wkSignNameWrap" style="max-width:360px"><label class="label" for="wkSignName">Your name</label><input type="text" id="wkSignName" autocomplete="name" placeholder="e.g. Sam Patel"></div>
-      <div class="signed" id="wkSign"></div>
-    </section>
+    <section class="scard glass signcard" id="wkSignCard"></section>
+    <button class="fab" type="button" id="wkSignFab" hidden></button>
   </div>
 
   <!-- HISTORY -->
