@@ -39,18 +39,20 @@ The theme follows Apple's Liquid Glass language. I couldn't check anything speci
 | 12 | Text inputs used 14–15 px text, so iPhones zoom in when you tap a field. | Low | Inputs use 16 px text, so there's no zoom on focus. |
 | 13 | The page's long introduction pushed content down on phones. | Low | Hidden on screens under 520 px wide (still shown on tablets and desktop). |
 | 14 | Focus rings were thin and easy to miss on tinted backgrounds. | Low | Thicker, softer focus rings. Text fields get an iOS-style focus glow. |
+| 15 | On iPad the section bar wrapped into four rows and stayed pinned, covering about a third of the screen. Unselected sections looked like plain text. | High | The bar is now one row on every screen. Diary sections stay as tabs. Records and Management are glass pull-down menus (a round "⋯" menu that opens as a bottom sheet on phones), and the menu button shows the current section. Keyboard and screen-reader menu behaviour is supported. If a new page version changes the bar, the shim leaves the page's own bar in place. |
 
 ## Recommended for Will's master page
 
 These can't be fixed cleanly from outside the page:
 
-1. **Put the section tabs before "Needs attention" in the HTML.** The theme moves them up visually, so keyboard and screen-reader order now differs slightly from what you see.
+1. **Put the section tabs before "Needs attention" in the HTML.** The theme moves them up visually, so keyboard and screen-reader order now differs slightly from what you see. If the Records and Management menus work well for staff, they could also be built into the page itself.
 2. **Wrap the main content in `<main>`.** It has no landmarks, so screen-reader users can't jump to the content.
 3. **Use `role="tab"` on the section buttons in the page itself**, with `role="tabpanel"` and `aria-controls` on the sections. Better still, make them plain buttons with `aria-current`.
 4. **Give the two unlabelled columns in the Prove it table header text**, even if visually hidden.
 5. **Give the page a proper `<title>`** (currently "SFBB BACKUP"), placed in the `<head>`.
 6. **Stop loading the Archivo and JetBrains Mono fonts** if the system font is preferred. The theme no longer uses them, but the page still downloads them.
-7. **Consider a collapsible "Needs attention" panel.** On phones it can still be several screens tall before the diary itself.
+7. **Say "Not started" once.** For a site that isn't in use yet, it appears on the site card, in the "Needs attention" heading and again on the row inside it. One place, with the "Set up" action, is enough.
+8. **Consider a collapsible "Needs attention" panel.** On phones it can still be several screens tall before the diary itself.
 
 ## Limits of the theme
 
