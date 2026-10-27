@@ -6,23 +6,33 @@ import { startServer, SYNC_TOKEN } from "./harness.mjs";
 let srv, ADMIN, STAFF;
 before(async () => {
   srv = await startServer({ writeLimit: 80 });
-  ADMIN = await setupAdmin("Sam Patel", "1234");
-  const r = await admin("POST", "users", { name: "Alex Brown", role: "staff", pin: "5678" });
+  ADMIN = await setupAdmin("Sam Patel", "sam.patel", "admin-pass-1");
+  const r = await admin("POST", "users", { name: "Alex Brown", username: "alex", role: "staff", password: "temp-pass-1" });
   assert.equal(r.status, 200);
-  STAFF = await login("Alex Brown", "5678");
+  STAFF = await firstSignIn("alex", "temp-pass-1", "alex-own-pass");
 });
 after(async () => { await srv?.stop(); });
 
 const cookieOf = (res) => (res.headers.get("set-cookie") || "").split(";")[0];
+const postJson = (url, body) => fetch(`${srv.base}${url}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 
-async function setupAdmin(name, pin) {
-  const r = await fetch(`${srv.base}/api/auth/setup`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, pin, code: SYNC_TOKEN }) });
+async function setupAdmin(name, username, password) {
+  const r = await postJson("/api/auth/setup", { name, username, password, code: SYNC_TOKEN });
   assert.equal(r.status, 200, await r.clone().text());
   return cookieOf(r);
 }
-async function login(name, pin) {
-  const r = await fetch(`${srv.base}/api/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, pin }) });
-  return r.status === 200 ? cookieOf(r) : { status: r.status, body: await r.json() };
+async function login(username, password) {
+  const r = await postJson("/api/auth/login", { username, password });
+  const body = await r.json();
+  return r.status === 200 && !body.mustChange ? cookieOf(r) : { status: r.status, body };
+}
+/** Signs in with a temporary password and chooses a new one, as the sign-in page does. */
+async function firstSignIn(username, temp, chosen) {
+  const first = await login(username, temp);
+  assert.equal(first.body?.mustChange, true, "a temporary password asks for a new one");
+  const r = await postJson("/api/auth/change", { username, password: temp, newPassword: chosen });
+  assert.equal(r.status, 200, await r.clone().text());
+  return cookieOf(r);
 }
 async function db(op, body, cookie = ADMIN) {
   const headers = { "content-type": "application/json" };
@@ -71,27 +81,39 @@ test("page is served with the shim and noindex once signed in", async () => {
 });
 
 test("setup works once, and needs the setup code", async () => {
-  const again = await fetch(`${srv.base}/api/auth/setup`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Eve", pin: "1111", code: SYNC_TOKEN }) });
+  const again = await postJson("/api/auth/setup", { name: "Eve", username: "eve", password: "eve-pass-1", code: SYNC_TOKEN });
   assert.equal(again.status, 409);
   const me = await (await fetch(srv.base + "/api/auth/me", { headers: { cookie: ADMIN } })).json();
   assert.deepEqual(me.user, { id: me.user.id, name: "Sam Patel", role: "admin", recordId: "web:Sam Patel" });
 });
 
-test("sign-in: wrong PINs, case-insensitive names, lockout and unlock", async () => {
-  assert.equal(typeof (await login("alex brown", "5678")), "string", "names match regardless of case");
-  const wrong = await login("Alex Brown", "0000");
+test("sign-in: username + password, wrong passwords, lockout and unlock", async () => {
+  assert.equal(typeof (await login("ALEX", "alex-own-pass")), "string", "usernames aren't case-sensitive");
+  assert.equal((await login("alex", "temp-pass-1")).status, 401, "the temporary password stops working");
+  const wrong = await login("alex", "nope-nope");
   assert.equal(wrong.status, 401);
-  assert.equal(wrong.body.code, "wrong_pin");
-  assert.equal((await login("Nobody Here", "1234")).body.code, "wrong_pin", "unknown names get the same answer");
-  const { body } = await admin("POST", "users", { name: "Lock Test", role: "staff", pin: "2468" });
-  for (let i = 0; i < 4; i++) assert.equal((await login("Lock Test", "1357")).status, 401);
-  const locked = await login("Lock Test", "1357");
-  assert.equal(locked.status, 423);
-  assert.equal((await login("Lock Test", "2468")).status, 423, "even the right PIN waits out the lock");
-  const list = (await admin("GET", "users")).body.users;
-  assert.equal(list.find((u) => u.name === "Lock Test").locked, true);
+  assert.equal(wrong.body.code, "wrong_password");
+  assert.match(wrong.body.message, /tries left/);
+  assert.equal((await login("nobody", "whatever1")).body.code, "wrong_password");
+  assert.equal((await login("Alex Brown", "alex-own-pass")).status, 401, "the display name isn't a username");
+  const { body } = await admin("POST", "users", { name: "Lock Test", username: "lock.test", role: "staff", password: "lock-pass-1" });
+  for (let i = 0; i < 4; i++) assert.equal((await login("lock.test", "wrong-pass")).status, 401);
+  assert.equal((await login("lock.test", "wrong-pass")).status, 423);
+  assert.equal((await login("lock.test", "lock-pass-1")).status, 423, "even the right password waits out the lock");
+  assert.equal((await admin("GET", "users")).body.users.find((u) => u.username === "lock.test").locked, true);
   await admin("PATCH", `users/${body.user.id}`, { unlock: true });
-  assert.equal(typeof (await login("Lock Test", "2468")), "string");
+  assert.equal((await login("lock.test", "lock-pass-1")).body.mustChange, true);
+});
+
+test("passwords: rules, change, and new passwords end other sessions", async () => {
+  assert.equal((await postJson("/api/auth/change", { username: "alex", password: "alex-own-pass", newPassword: "short" })).status, 400);
+  assert.equal((await postJson("/api/auth/change", { username: "alex", password: "alex-own-pass", newPassword: "alex-own-pass" })).status, 400);
+  const old = STAFF;
+  const r = await postJson("/api/auth/change", { username: "alex", password: "alex-own-pass", newPassword: "alex-newer-pass" });
+  assert.equal(r.status, 200);
+  STAFF = cookieOf(r);
+  assert.equal((await db("get", { path: "days/x" }, old)).status, 401, "other sessions end");
+  assert.equal((await db("get", { path: "days/x" }, STAFF)).status, 200);
 });
 
 test("roles: staff record entries but can't change manager sections or use admin", async () => {
@@ -108,49 +130,55 @@ test("roles: staff record entries but can't change manager sections or use admin
   assert.equal(adm.headers.get("location"), "/");
   const r = await db("get", { path: "sites/cafe/days/2026-10-01" }, STAFF);
   assert.equal(r.body.exists, true);
+  assert.equal((await db("get", { path: "sites/cafe/days/2026-10-01" })).body.exists, true);
 });
 
-test("admin: add, rename, PIN reset and switch off sign people out", async () => {
+test("admin: add, rename, temporary password and switch off", async () => {
   const add = await admin("POST", "users", { name: "Jo Manager", role: "manager" });
   assert.equal(add.status, 200);
-  assert.match(add.body.pin, /^\d{6}$/, "a PIN is created when none is given");
-  assert.equal((await admin("POST", "users", { name: "jo manager", role: "staff" })).body.code, "name_taken");
-  assert.equal((await admin("POST", "users", { name: "X", role: "boss" })).body.code, "invalid_argument");
+  assert.equal(add.body.user.username, "jo.manager", "username suggested from the name");
+  assert.match(add.body.password, /^[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}$/, "a temporary password is created when none is given");
+  assert.equal(add.body.user.mustChange, true);
+  assert.equal((await admin("POST", "users", { name: "jo manager", username: "other", role: "staff" })).body.code, "name_taken");
+  assert.equal((await admin("POST", "users", { name: "Jo Two", username: "jo.manager", role: "staff" })).body.code, "username_taken");
+  assert.equal((await admin("POST", "users", { name: "Bad", username: "no spaces", role: "staff" })).body.code, "invalid_argument");
+  assert.equal((await admin("POST", "users", { name: "X Y", role: "boss" })).body.code, "invalid_argument");
   const id = add.body.user.id;
-  const jo = await login("Jo Manager", add.body.pin);
+  const jo = await firstSignIn("jo.manager", add.body.password, "jo-own-pass");
   assert.equal((await db("set", { path: "sites/cafe/suppliers/s9", data: { name: "Ok" } }, jo)).status, 200, "managers can");
 
-  const reset = await admin("PATCH", `users/${id}`, { pin: "generate" });
-  assert.match(reset.body.pin, /^\d{6}$/);
-  assert.equal((await db("get", { path: "days/x" }, jo)).status, 401, "old session ends after a PIN reset");
-  const jo2 = await login("Jo Manager", reset.body.pin);
+  const reset = await admin("PATCH", `users/${id}`, { password: "generate" });
+  assert.equal(reset.body.user.mustChange, true);
+  assert.equal((await db("get", { path: "days/x" }, jo)).status, 401, "old session ends after a reset");
+  const jo2 = await firstSignIn("jo.manager", reset.body.password, "jo-second-pass");
 
-  await admin("PATCH", `users/${id}`, { name: "Jo Smith" });
+  const ren = await admin("PATCH", `users/${id}`, { name: "Jo Smith", username: "jo.smith" });
+  assert.equal(ren.status, 200);
+  assert.equal((await admin("PATCH", `users/${id}`, { username: "jo" })).body.code, "invalid_argument", "usernames need 3+ characters");
   assert.equal((await db("get", { path: "days/x" }, jo2)).status, 401, "renaming signs them out so records use the new name");
-  const jo3 = await login("Jo Smith", reset.body.pin);
+  const jo3 = await login("jo.smith", "jo-second-pass");
   await db("set", { path: "sites/cafe/days/2026-10-02", data: { date: "2026-10-02" } }, jo3);
-  const changes = (await sync("GET", "changes?since=0")).body.changes;
-  assert.ok(changes.some((c) => c.path === "sites/cafe/days/2026-10-02"));
+  const me = await (await fetch(srv.base + "/api/auth/me", { headers: { cookie: jo3 } })).json();
+  assert.equal(me.user.recordId, "web:Jo Smith", "records show the name, not the username");
 
   await admin("PATCH", `users/${id}`, { active: false });
   assert.equal((await db("get", { path: "days/x" }, jo3)).status, 401);
-  assert.equal((await login("Jo Smith", reset.body.pin)).status, 401, "switched-off people can't sign in");
+  assert.equal((await login("jo.smith", "jo-second-pass")).status, 401, "switched-off people can't sign in");
 });
 
-test("an admin who forgot their PIN can set a new one with the setup code", async () => {
-  const post = (body) => fetch(`${srv.base}/api/auth/recover`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-  assert.equal((await post({ name: "Sam Patel", pin: "9999", code: "nope" })).status, 403);
-  assert.equal((await post({ name: "Alex Brown", pin: "9999", code: SYNC_TOKEN })).status, 404, "staff can't use it");
-  const r = await post({ name: "Sam Patel", pin: "9999", code: SYNC_TOKEN });
+test("an admin who forgot their password can set a new one with the setup code", async () => {
+  assert.equal((await postJson("/api/auth/recover", { username: "sam.patel", password: "brand-new-1", code: "nope" })).status, 403);
+  assert.equal((await postJson("/api/auth/recover", { username: "alex", password: "brand-new-1", code: SYNC_TOKEN })).status, 404, "staff can't use it");
+  const r = await postJson("/api/auth/recover", { username: "sam.patel", password: "brand-new-1", code: SYNC_TOKEN });
   assert.equal(r.status, 200);
   assert.equal((await db("get", { path: "days/x" })).status, 401, "old admin sessions end");
-  ADMIN = await login("Sam Patel", "9999");
+  ADMIN = await login("sam.patel", "brand-new-1");
   assert.equal(typeof ADMIN, "string");
 });
 
 test("admin: the last admin can't be demoted or switched off", async () => {
   const users = (await admin("GET", "users")).body.users;
-  const me = users.find((u) => u.name === "Sam Patel");
+  const me = users.find((u) => u.username === "sam.patel");
   assert.equal((await admin("PATCH", `users/${me.id}`, { role: "staff" })).body.code, "last_admin");
   assert.equal((await admin("PATCH", `users/${me.id}`, { active: false })).body.code, "last_admin");
   const st = await admin("GET", "status");

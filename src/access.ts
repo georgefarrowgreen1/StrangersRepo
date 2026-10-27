@@ -11,7 +11,7 @@ export type Caller =
  * The one place access is decided. Every request passes through here before routing.
  *
  * /api/sync/* needs the sync token. Everything else identifies the person from their session cookie
- * (name + PIN sign-in, see auth.ts); index.ts then decides what an anonymous caller may reach (only the
+ * (username + password sign-in, see auth.ts); index.ts then decides what an anonymous caller may reach (only the
  * sign-in page and its assets) and what each role may do (see canWrite and canOpenTab below).
  */
 export async function authorize(req: Request, env: Env, url: URL): Promise<Caller | Response> {

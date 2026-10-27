@@ -1,5 +1,5 @@
 // Admin API (/api/admin/*): manage accounts and check the sync. Admins only (enforced in index.ts).
-import { ROLES, Role, User, UserRow, checkPin, cleanName, hashPin, nameKey, newId, randomPin } from "./auth";
+import { ROLES, Role, User, UserRow, checkPassword, checkUsername, cleanName, hashPassword, nameKey, newId, tempPassword, usernameFrom } from "./auth";
 import { ApiError, Env, SQL_NOW_MS, invalid, json, readJson } from "./http";
 import { isSynced } from "./paths";
 
@@ -7,7 +7,9 @@ function listItem(r: UserRow) {
   return {
     id: r.id,
     name: r.name,
+    username: r.username,
     role: r.role,
+    mustChange: !!r.must_change,
     active: !!r.active,
     locked: r.locked_until > Date.now(),
     createdAt: r.created_at,
@@ -35,6 +37,10 @@ async function nameTaken(env: Env, name: string, exceptId = ""): Promise<boolean
   return !!(await env.DB.prepare("SELECT 1 FROM users WHERE name_key = ? AND id != ?").bind(nameKey(name), exceptId).first());
 }
 
+async function usernameTaken(env: Env, username: string, exceptId = ""): Promise<boolean> {
+  return !!(await env.DB.prepare("SELECT 1 FROM users WHERE username = ? AND id != ?").bind(username, exceptId).first());
+}
+
 export async function handleAdmin(req: Request, env: Env, route: string, admin: User): Promise<Response> {
   // GET /api/admin/users
   if (route === "users" && req.method === "GET") {
@@ -42,24 +48,27 @@ export async function handleAdmin(req: Request, env: Env, route: string, admin: 
     return json({ users: results.map(listItem) });
   }
 
-  // POST /api/admin/users {name, role, pin?}: returns the PIN once if one was generated.
+  // POST /api/admin/users {name, username?, role, password?}. The password is temporary: the person
+  // chooses their own at first sign-in. A generated one is returned once.
   if (route === "users" && req.method === "POST") {
     const body = await readJson<any>(req, 4096);
     const name = cleanName(body.name);
     if (!name) throw invalid("Enter a name (up to 60 characters).");
     if (await nameTaken(env, name)) throw new ApiError(409, "name_taken", `There's already someone called ${name}. Add a surname or initial.`);
+    const username = checkUsername(body.username || usernameFrom(name));
+    if (await usernameTaken(env, username)) throw new ApiError(409, "username_taken", `The username ${username} is taken. Choose another.`);
     const role = checkRole(body.role ?? "staff");
-    const pin = body.pin ? checkPin(body.pin) : randomPin();
-    const { hash, salt } = await hashPin(pin);
+    const password = body.password ? checkPassword(body.password) : tempPassword();
+    const { hash, salt } = await hashPassword(password);
     const id = newId();
     await env.DB.prepare(
-      `INSERT INTO users (id, name, name_key, role, pin_hash, pin_salt, created_at, created_by, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ${SQL_NOW_MS}, ?, ${SQL_NOW_MS})`,
-    ).bind(id, name, nameKey(name), role, hash, salt, admin.name).run();
-    return json({ user: listItem(await getRow(env, id)), pin });
+      `INSERT INTO users (id, name, name_key, username, role, pin_hash, pin_salt, must_change, created_at, created_by, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 1, ${SQL_NOW_MS}, ?, ${SQL_NOW_MS})`,
+    ).bind(id, name, nameKey(name), username, role, hash, salt, admin.name).run();
+    return json({ user: listItem(await getRow(env, id)), ...(body.password ? {} : { password }) });
   }
 
-  // PATCH /api/admin/users/<id> {name?, role?, active?, pin?: "1234" | "generate", unlock?, signOut?}
+  // PATCH /api/admin/users/<id> {name?, username?, role?, active?, password?: "..." | "generate", unlock?, signOut?}
   const m = route.match(/^users\/([0-9a-f]{24})$/);
   if (m && req.method === "PATCH") {
     const body = await readJson<any>(req, 4096);
@@ -67,7 +76,7 @@ export async function handleAdmin(req: Request, env: Env, route: string, admin: 
     const sets: string[] = [];
     const args: unknown[] = [];
     let bump = false; // sign this person out everywhere
-    let pinOut: string | undefined;
+    let passwordOut: string | undefined;
 
     if (body.name !== undefined) {
       const name = cleanName(body.name);
@@ -76,6 +85,12 @@ export async function handleAdmin(req: Request, env: Env, route: string, admin: 
       sets.push("name = ?", "name_key = ?");
       args.push(name, nameKey(name));
       bump = true; // their records are written under their name, so sessions must pick up the new one
+    }
+    if (body.username !== undefined) {
+      const username = checkUsername(body.username);
+      if (await usernameTaken(env, username, row.id)) throw new ApiError(409, "username_taken", `The username ${username} is taken.`);
+      sets.push("username = ?");
+      args.push(username);
     }
     const losingAdmin =
       row.role === "admin" && row.active &&
@@ -92,10 +107,11 @@ export async function handleAdmin(req: Request, env: Env, route: string, admin: 
       args.push(body.active ? 1 : 0);
       if (!body.active) bump = true;
     }
-    if (body.pin !== undefined) {
-      pinOut = body.pin === "generate" ? randomPin() : checkPin(body.pin);
-      const { hash, salt } = await hashPin(pinOut);
-      sets.push("pin_hash = ?", "pin_salt = ?", "failed = 0", "locked_until = 0");
+    if (body.password !== undefined) {
+      // A temporary password: they choose their own at next sign-in.
+      passwordOut = body.password === "generate" ? tempPassword() : checkPassword(body.password);
+      const { hash, salt } = await hashPassword(passwordOut);
+      sets.push("pin_hash = ?", "pin_salt = ?", "must_change = 1", "failed = 0", "locked_until = 0");
       args.push(hash, salt);
       bump = true;
     }
@@ -105,7 +121,7 @@ export async function handleAdmin(req: Request, env: Env, route: string, admin: 
     if (!sets.length) throw invalid("Nothing to change.");
     sets.push(`updated_at = ${SQL_NOW_MS}`);
     await env.DB.prepare(`UPDATE users SET ${sets.join(", ")} WHERE id = ?`).bind(...args, row.id).run();
-    return json({ user: listItem(await getRow(env, row.id)), ...(body.pin === "generate" ? { pin: pinOut } : {}) });
+    return json({ user: listItem(await getRow(env, row.id)), ...(body.password === "generate" ? { password: passwordOut } : {}) });
   }
 
   // GET /api/admin/status: is Will's sync running?

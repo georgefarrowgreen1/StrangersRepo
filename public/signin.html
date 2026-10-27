@@ -20,23 +20,24 @@
     padding:calc(24px + env(safe-area-inset-top,0px)) 16px calc(24px + env(safe-area-inset-bottom,0px))}
   [hidden]{display:none!important}
   main{width:100%;max-width:400px}
-  section.panel{display:grid;gap:16px}
+  section.panel{display:grid;gap:18px}
   form{display:grid;gap:14px}
-  h1{margin:0}
-  p{margin:0}
+  h1,h2,p{margin:0}
+  h2{font-size:19px}
   .label{text-transform:uppercase;color:var(--accent)}
   .field{display:grid;gap:6px}
-  .field label{font-size:13px;font-weight:600;color:var(--muted)}
+  .field label{font-size:14px;font-weight:600}
   input{width:100%;font:inherit;color:inherit}
+  .pw{position:relative}
+  .pw input{padding-right:72px}
+  .pw .show{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:0;font:inherit;font-size:14px;
+    font-weight:600;color:var(--accent);cursor:pointer;padding:8px 10px;min-height:40px;border-radius:10px}
   .btn{border:0;cursor:pointer;font:inherit;font-weight:600;color:var(--accent-ink);background:var(--accent);min-height:48px;font-size:17px}
   .note{color:var(--muted);font-size:14px}
-  .err{color:var(--bad);font-size:14px;font-weight:600;min-height:1.2em}
-  #pin,#spin,#spin2,#rpin{font-family:var(--mono);font-size:24px;letter-spacing:.35em;text-align:center}
-  .people{display:flex;flex-wrap:wrap;gap:8px}
-  .people button{font:inherit;font-size:15px;font-weight:600;border:0;border-radius:99px;padding:10px 16px;min-height:44px;cursor:pointer;
-    background:var(--sunk);color:var(--fg)}
-  .people button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
-  .linkbtn{background:none;border:0;padding:0;font:inherit;font-size:14px;color:var(--accent);cursor:pointer;justify-self:start;min-height:32px}
+  .err{color:var(--bad);font-size:14px;font-weight:600}
+  .err:empty{display:none}
+  .links{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 16px}
+  .linkbtn{background:none;border:0;padding:0;font:inherit;font-size:14px;color:var(--accent);cursor:pointer;min-height:36px;text-align:left}
 </style>
 </head>
 <body>
@@ -47,67 +48,126 @@
       <h1>Kitchen Diary</h1>
     </div>
 
+    <!-- Sign in -->
     <form id="signin" hidden novalidate>
-      <div class="field" id="peopleField" hidden>
-        <label id="peopleLabel">Who are you?</label>
-        <div class="people" id="people" role="group" aria-labelledby="peopleLabel"></div>
-      </div>
-      <div class="field" id="nameField">
-        <label for="name">Your name</label>
-        <input type="text" id="name" name="username" autocomplete="username" autocapitalize="words" maxlength="60" required>
-      </div>
-      <button type="button" class="linkbtn" id="someoneElse" hidden>Someone else</button>
       <div class="field">
-        <label for="pin">PIN</label>
-        <input id="pin" name="password" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="current-password" required>
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="32" required>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <div class="pw"><input type="password" id="password" name="password" autocomplete="current-password" maxlength="128" required>
+          <button type="button" class="show" aria-controls="password" aria-pressed="false">Show</button></div>
       </div>
       <p class="err" id="err" role="alert"></p>
       <button class="btn" type="submit">Sign in</button>
-      <p class="note">Forgotten your PIN? Ask an admin to reset it.</p>
-      <button type="button" class="linkbtn" id="toRecover">I'm an admin and I've forgotten my PIN</button>
+      <div class="links">
+        <button type="button" class="linkbtn" data-go="change">Change password</button>
+        <button type="button" class="linkbtn" data-go="recover">Admin? Forgotten password</button>
+      </div>
+      <p class="note">Forgotten your password? Ask an admin to reset it.</p>
     </form>
 
-    <form id="recover" hidden novalidate>
-      <p class="note">Set a new PIN for an admin account using the setup code.</p>
+    <!-- First sign-in with a temporary password -->
+    <form id="newpw" hidden novalidate>
+      <h2 id="newpwTitle">Choose your password</h2>
+      <p class="note">You signed in with a temporary password. Choose your own to continue: at least 8 characters.</p>
+      <input type="text" name="username" autocomplete="username" hidden>
       <div class="field">
-        <label for="rname">Admin name</label>
-        <input type="text" id="rname" autocomplete="username" autocapitalize="words" maxlength="60" required>
+        <label for="np1">New password</label>
+        <div class="pw"><input type="password" id="np1" autocomplete="new-password" maxlength="128" required>
+          <button type="button" class="show" aria-controls="np1" aria-pressed="false">Show</button></div>
       </div>
       <div class="field">
-        <label for="rpin">New PIN (4 to 6 digits)</label>
-        <input id="rpin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="new-password" required>
+        <label for="np2">New password again</label>
+        <input type="password" id="np2" autocomplete="new-password" maxlength="128" required>
       </div>
-      <div class="field">
-        <label for="rcode">Setup code</label>
-        <input type="text" id="rcode" autocomplete="off" spellcheck="false" required>
-        <p class="note">The sync token saved in Cloudflare (Settings → Variables and Secrets → SYNC_TOKEN).</p>
-      </div>
-      <p class="err" id="rerr" role="alert"></p>
-      <button class="btn" type="submit">Set new PIN and sign in</button>
-      <button type="button" class="linkbtn" id="toSignin">Back to sign in</button>
+      <p class="err" id="nperr" role="alert"></p>
+      <button class="btn" type="submit">Save and sign in</button>
     </form>
 
+    <!-- Change password -->
+    <form id="change" hidden novalidate>
+      <h2>Change password</h2>
+      <div class="field">
+        <label for="cuser">Username</label>
+        <input type="text" id="cuser" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="32" required>
+      </div>
+      <div class="field">
+        <label for="ccur">Current password</label>
+        <input type="password" id="ccur" autocomplete="current-password" maxlength="128" required>
+      </div>
+      <div class="field">
+        <label for="cnew">New password</label>
+        <div class="pw"><input type="password" id="cnew" autocomplete="new-password" maxlength="128" required>
+          <button type="button" class="show" aria-controls="cnew" aria-pressed="false">Show</button></div>
+      </div>
+      <div class="field">
+        <label for="cnew2">New password again</label>
+        <input type="password" id="cnew2" autocomplete="new-password" maxlength="128" required>
+      </div>
+      <p class="err" id="cerr" role="alert"></p>
+      <button class="btn" type="submit">Change password and sign in</button>
+      <button type="button" class="linkbtn" data-go="signin">Back to sign in</button>
+    </form>
+
+    <!-- First admin -->
     <form id="setup" hidden novalidate>
-      <p class="note">Set up the first admin account. You'll use it to add everyone else.</p>
+      <h2>Set up the first admin</h2>
+      <p class="note">You'll use this account to add everyone else.</p>
       <div class="field">
         <label for="sname">Your name</label>
-        <input type="text" id="sname" autocomplete="username" autocapitalize="words" maxlength="60" required>
+        <input type="text" id="sname" autocomplete="name" autocapitalize="words" maxlength="60" placeholder="e.g. Sam Patel" required>
+        <p class="note">Shown on the records you make.</p>
       </div>
       <div class="field">
-        <label for="spin">Choose a PIN (4 to 6 digits)</label>
-        <input id="spin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="new-password" required>
+        <label for="suser">Username</label>
+        <input type="text" id="suser" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="32" placeholder="e.g. sam.patel" required>
       </div>
       <div class="field">
-        <label for="spin2">Enter the PIN again</label>
-        <input id="spin2" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="new-password" required>
+        <label for="spw">Password</label>
+        <div class="pw"><input type="password" id="spw" autocomplete="new-password" maxlength="128" required>
+          <button type="button" class="show" aria-controls="spw" aria-pressed="false">Show</button></div>
+        <p class="note">At least 8 characters.</p>
+      </div>
+      <div class="field">
+        <label for="spw2">Password again</label>
+        <input type="password" id="spw2" autocomplete="new-password" maxlength="128" required>
       </div>
       <div class="field">
         <label for="scode">Setup code</label>
-        <input type="text" id="scode" autocomplete="off" spellcheck="false" required>
-        <p class="note">The sync token you saved in Cloudflare (Settings → Variables and Secrets → SYNC_TOKEN).</p>
+        <input type="text" id="scode" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+        <p class="note">The sync token saved in Cloudflare (Settings → Variables and Secrets → SYNC_TOKEN).</p>
       </div>
       <p class="err" id="serr" role="alert"></p>
       <button class="btn" type="submit">Create admin account</button>
+    </form>
+
+    <!-- Admin password recovery -->
+    <form id="recover" hidden novalidate>
+      <h2>Admin password reset</h2>
+      <p class="note">For admins only, using the setup code. Everyone else: ask an admin.</p>
+      <div class="field">
+        <label for="ruser">Admin username</label>
+        <input type="text" id="ruser" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="32" required>
+      </div>
+      <div class="field">
+        <label for="rpw">New password</label>
+        <div class="pw"><input type="password" id="rpw" autocomplete="new-password" maxlength="128" required>
+          <button type="button" class="show" aria-controls="rpw" aria-pressed="false">Show</button></div>
+      </div>
+      <div class="field">
+        <label for="rpw2">New password again</label>
+        <input type="password" id="rpw2" autocomplete="new-password" maxlength="128" required>
+      </div>
+      <div class="field">
+        <label for="rcode">Setup code</label>
+        <input type="text" id="rcode" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+        <p class="note">The sync token saved in Cloudflare (Settings → Variables and Secrets → SYNC_TOKEN).</p>
+      </div>
+      <p class="err" id="rerr" role="alert"></p>
+      <button class="btn" type="submit">Reset password and sign in</button>
+      <button type="button" class="linkbtn" data-go="signin">Back to sign in</button>
     </form>
   </section>
 </main>

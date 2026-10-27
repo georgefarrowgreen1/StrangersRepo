@@ -42,21 +42,25 @@ test("staff journey on the real page", async () => {
   await page.waitForURL(/\/signin$/);
   await page.locator("#setup").waitFor();
   await page.fill("#sname", "Sam Patel");
-  await page.fill("#spin", "1234");
-  await page.fill("#spin2", "1234");
+  assert.equal(await page.inputValue("#suser"), "sam.patel", "username suggested from the name");
+  await page.fill("#spw", "admin-pass-1");
+  await page.fill("#spw2", "admin-pass-1");
   await page.fill("#scode", "wrong code");
   await page.click("#setup button[type=submit]");
   await page.locator("#serr", { hasText: "setup code isn't right" }).waitFor();
   await page.fill("#scode", SYNC_TOKEN);
   await page.click("#setup button[type=submit]");
 
-  // The admin page: add a member of staff, with a PIN created for them.
+  // The admin page: add a member of staff, with a temporary password created for them.
   await page.waitForURL(/\/admin$/);
   await page.locator(".person", { hasText: "Sam Patel (you)" }).waitFor();
   await page.fill("#aname", "Alex Brown");
+  assert.equal(await page.inputValue("#auser"), "alex.brown");
   await page.click("#add button[type=submit]");
-  const alexPin = (await page.locator("#newPin b").textContent()).trim();
-  assert.match(alexPin, /^\d{6}$/);
+  await page.locator("#newPw b").first().waitFor();
+  const [alexUser, alexTemp] = (await page.locator("#newPw b").allTextContents()).map((t) => t.trim());
+  assert.equal(alexUser, "alex.brown");
+  assert.match(alexTemp, /^[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}$/);
   await page.locator(".person", { hasText: "Alex Brown" }).waitFor();
 
   COOKIE = (await ctx.cookies()).filter((c) => c.name === "sfbb_session").map((c) => `${c.name}=${c.value}`).join("");
@@ -161,17 +165,19 @@ test("staff journey on the real page", async () => {
   await openSection(page, "plans");
   assert.equal(await page.locator("#plUploadPanel").isHidden(), true);
 
-  // Switch user: the device remembers who's signed in here before.
-  await page.locator("#who .shim-change", { hasText: "Switch user" }).click();
+  // Sign out, then sign in as the new member of staff: username + temporary password, then their own.
+  await page.locator("#who .shim-change", { hasText: "Sign out" }).click();
   await page.waitForURL(/\/signin$/);
-  await page.locator("#people button", { hasText: "Sam Patel" }).waitFor();
-  await page.click("#someoneElse");
-  await page.fill("#name", "Alex Brown");
-  await page.fill("#pin", "000000");
+  await page.fill("#username", "alex.brown");
+  await page.fill("#password", "wrong-password");
   await page.click("#signin button[type=submit]");
-  await page.locator("#err", { hasText: "don't match" }).waitFor();
-  await page.fill("#pin", alexPin);
+  await page.locator("#err", { hasText: "tries left" }).waitFor();
+  await page.fill("#password", alexTemp);
   await page.click("#signin button[type=submit]");
+  await page.locator("#newpw", { hasText: "Hi Alex Brown" }).waitFor();
+  await page.fill("#np1", "alex-own-pass");
+  await page.fill("#np2", "alex-own-pass");
+  await page.click("#newpw button[type=submit]");
 
   // Staff: no admin link, no manager sections, and the server refuses manager changes.
   await page.locator("#who", { hasText: "Recording as Alex Brown" }).waitFor();
@@ -189,10 +195,14 @@ test("staff journey on the real page", async () => {
   await page.locator("#toast", { hasText: "for managers" }).waitFor();
   assert.equal(await page.locator('[data-panel="day"]').isVisible(), true, "back on the daily diary");
 
-  // And signing back in is one tap on the name.
-  await page.locator("#who .shim-change", { hasText: "Switch user" }).click();
+  // Signing out leaves a plain sign-in form; the new password works.
+  await page.locator("#who .shim-change", { hasText: "Sign out" }).click();
   await page.waitForURL(/\/signin$/);
-  assert.deepEqual(await page.locator("#people button").allTextContents(), ["Alex Brown", "Sam Patel"]);
+  assert.equal(await page.inputValue("#username"), "");
+  await page.fill("#username", "alex.brown");
+  await page.fill("#password", "alex-own-pass");
+  await page.click("#signin button[type=submit]");
+  await page.locator("#who", { hasText: "Recording as Alex Brown" }).waitFor();
 
   assert.deepEqual(errors, []);
   await ctx.close();

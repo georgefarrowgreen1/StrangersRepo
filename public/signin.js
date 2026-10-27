@@ -1,9 +1,9 @@
-// Sign-in page: name + PIN, with one-tap buttons for people who've signed in on this device before.
+// Sign-in page: username + password, choosing a password after a temporary one, changing a password,
+// first-admin setup and admin password recovery.
 (() => {
   "use strict";
   const $ = (s) => document.querySelector(s);
-  const RECENT = "sfbb.people";
-  const MAX_RECENT = 8;
+  const FORMS = ["signin", "newpw", "change", "setup", "recover"];
 
   // Only same-site paths, so the next= link can't send people elsewhere.
   const next = (() => {
@@ -11,9 +11,11 @@
     return n.startsWith("/") && !n.startsWith("//") ? n : "/";
   })();
 
-  const recent = () => { try { return JSON.parse(localStorage.getItem(RECENT) || "[]").filter((x) => typeof x === "string"); } catch (e) { return []; } };
-  function remember(name) {
-    try { localStorage.setItem(RECENT, JSON.stringify([name, ...recent().filter((n) => n.toLowerCase() !== name.toLowerCase())].slice(0, MAX_RECENT))); } catch (e) {}
+  function show(id, focus) {
+    for (const f of FORMS) $("#" + f).hidden = f !== id;
+    document.querySelectorAll(".err").forEach((e) => { e.textContent = ""; });
+    const el = focus ? $(focus) : $(`#${id} input:not([hidden])`);
+    if (el) el.focus();
   }
 
   async function post(url, body) {
@@ -28,124 +30,120 @@
     return data;
   }
 
+  // Runs a form's submit handler with its button disabled and errors shown in its .err.
+  function onSubmit(id, fn) {
+    $("#" + id).addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const err = $(`#${id} .err`), btn = $(`#${id} button[type=submit]`);
+      err.textContent = "";
+      btn.disabled = true;
+      try { await fn(err); } catch (x) { err.textContent = x.message; }
+      btn.disabled = false;
+    });
+  }
+
+  const val = (s) => $(s).value;
+  const user = (s) => $(s).value.trim().toLowerCase();
+  const checkNew = (a, b) => (a.length < 8 ? "Passwords need at least 8 characters." : a !== b ? "The two passwords don't match." : "");
+
+  document.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => {
+    if (b.dataset.go === "change" && $("#username").value) $("#cuser").value = $("#username").value;
+    if (b.dataset.go === "recover" && $("#username").value) $("#ruser").value = $("#username").value;
+    show(b.dataset.go);
+  }));
+
+  document.querySelectorAll(".pw .show").forEach((b) => b.addEventListener("click", () => {
+    const input = $("#" + b.getAttribute("aria-controls"));
+    const showing = input.type === "text";
+    input.type = showing ? "password" : "text";
+    b.textContent = showing ? "Show" : "Hide";
+    b.setAttribute("aria-pressed", String(!showing));
+    input.focus();
+  }));
+
   /* ---------- sign in ---------- */
 
-  function showPeople() {
-    const names = recent();
-    const box = $("#people");
-    box.replaceChildren();
-    for (const n of names) {
-      const b = Object.assign(document.createElement("button"), { type: "button", textContent: n });
-      b.setAttribute("aria-pressed", "false");
-      b.addEventListener("click", () => pick(n));
-      box.appendChild(b);
-    }
-    const has = names.length > 0;
-    $("#peopleField").hidden = !has;
-    $("#nameField").hidden = has;
-    $("#someoneElse").hidden = !has;
-  }
+  let pending = null; // {username, password} after signing in with a temporary password
 
-  function pick(name) {
-    $("#name").value = name;
-    for (const b of $("#people").children) b.setAttribute("aria-pressed", String(b.textContent === name));
-    $("#err").textContent = "";
-    $("#pin").value = "";
-    $("#pin").focus();
-  }
-
-  $("#someoneElse").addEventListener("click", () => {
-    $("#peopleField").hidden = true;
-    $("#someoneElse").hidden = true;
-    $("#nameField").hidden = false;
-    $("#name").value = "";
-    $("#name").focus();
-  });
-
-  $("#signin").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const err = $("#err");
-    const name = $("#name").value.trim();
-    const pin = $("#pin").value.trim();
-    if (!name) { err.textContent = recent().length ? "Tap your name, or choose Someone else." : "Enter your name."; return; }
-    if (!/^\d{4,6}$/.test(pin)) { err.textContent = "Enter your PIN (4 to 6 digits)."; $("#pin").focus(); return; }
-    err.textContent = "";
-    const btn = e.target.querySelector("button[type=submit]");
-    btn.disabled = true;
+  onSubmit("signin", async (err) => {
+    const username = user("#username"), password = val("#password");
+    if (!username) { err.textContent = "Enter your username."; $("#username").focus(); return; }
+    if (!password) { err.textContent = "Enter your password."; $("#password").focus(); return; }
     try {
-      const { user } = await post("/api/auth/login", { name, pin });
-      remember(user.name);
+      const r = await post("/api/auth/login", { username, password });
+      if (r.mustChange) {
+        pending = { username, password };
+        $("#newpw input[name=username]").value = username;
+        $("#newpwTitle").textContent = `Hi ${r.name}, choose your password`;
+        show("newpw", "#np1");
+        return;
+      }
       location.replace(next);
     } catch (x) {
-      err.textContent = x.message;
-      $("#pin").value = "";
-      $("#pin").focus();
-      btn.disabled = false;
+      $("#password").value = "";
+      $("#password").focus();
+      throw x;
     }
+  });
+
+  onSubmit("newpw", async (err) => {
+    const a = val("#np1"), b = val("#np2");
+    const bad = checkNew(a, b);
+    if (bad) { err.textContent = bad; return; }
+    await post("/api/auth/change", { ...pending, newPassword: a });
+    location.replace(next);
+  });
+
+  /* ---------- change password ---------- */
+
+  onSubmit("change", async (err) => {
+    const username = user("#cuser"), password = val("#ccur"), a = val("#cnew"), b = val("#cnew2");
+    if (!username || !password) { err.textContent = "Enter your username and current password."; return; }
+    const bad = checkNew(a, b);
+    if (bad) { err.textContent = bad; return; }
+    await post("/api/auth/change", { username, password, newPassword: a });
+    location.replace(next);
   });
 
   /* ---------- first admin ---------- */
 
-  $("#setup").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const err = $("#serr");
-    const name = $("#sname").value.trim(), pin = $("#spin").value.trim(), pin2 = $("#spin2").value.trim(), code = $("#scode").value.trim();
-    if (!name) { err.textContent = "Enter your name."; return; }
-    if (!/^\d{4,6}$/.test(pin)) { err.textContent = "Choose a PIN of 4 to 6 digits."; return; }
-    if (pin !== pin2) { err.textContent = "The two PINs don't match."; return; }
-    if (!code) { err.textContent = "Enter the setup code."; return; }
-    err.textContent = "";
-    const btn = e.target.querySelector("button[type=submit]");
-    btn.disabled = true;
-    try {
-      const { user } = await post("/api/auth/setup", { name, pin, code });
-      remember(user.name);
-      location.replace("/admin");
-    } catch (x) {
-      err.textContent = x.message;
-      btn.disabled = false;
-    }
+  // Suggest a username from the name until the person types their own.
+  let userEdited = false;
+  $("#suser").addEventListener("input", () => { userEdited = true; });
+  $("#sname").addEventListener("input", () => {
+    if (!userEdited) $("#suser").value = $("#sname").value.toLowerCase().normalize("NFKD").replace(/[^a-z0-9 .-]/g, "").trim().replace(/\s+/g, ".").slice(0, 32);
   });
 
-  /* ---------- admin PIN recovery ---------- */
-
-  $("#toRecover").addEventListener("click", () => { $("#signin").hidden = true; $("#recover").hidden = false; $("#rname").focus(); });
-  $("#toSignin").addEventListener("click", () => { $("#recover").hidden = true; $("#signin").hidden = false; });
-
-  $("#recover").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const err = $("#rerr");
-    const name = $("#rname").value.trim(), pin = $("#rpin").value.trim(), code = $("#rcode").value.trim();
-    if (!name) { err.textContent = "Enter the admin's name."; return; }
-    if (!/^\d{4,6}$/.test(pin)) { err.textContent = "Choose a PIN of 4 to 6 digits."; return; }
+  onSubmit("setup", async (err) => {
+    const name = val("#sname").trim(), username = user("#suser"), a = val("#spw"), b = val("#spw2"), code = val("#scode").trim();
+    if (!name) { err.textContent = "Enter your name."; return; }
+    if (!username) { err.textContent = "Choose a username."; return; }
+    const bad = checkNew(a, b);
+    if (bad) { err.textContent = bad; return; }
     if (!code) { err.textContent = "Enter the setup code."; return; }
-    err.textContent = "";
-    const btn = e.target.querySelector("button[type=submit]");
-    btn.disabled = true;
-    try {
-      const { user } = await post("/api/auth/recover", { name, pin, code });
-      remember(user.name);
-      location.replace("/admin");
-    } catch (x) {
-      err.textContent = x.message;
-      btn.disabled = false;
-    }
+    await post("/api/auth/setup", { name, username, password: a, code });
+    location.replace("/admin");
+  });
+
+  /* ---------- admin password recovery ---------- */
+
+  onSubmit("recover", async (err) => {
+    const username = user("#ruser"), a = val("#rpw"), b = val("#rpw2"), code = val("#rcode").trim();
+    if (!username) { err.textContent = "Enter the admin username."; return; }
+    const bad = checkNew(a, b);
+    if (bad) { err.textContent = bad; return; }
+    if (!code) { err.textContent = "Enter the setup code."; return; }
+    await post("/api/auth/recover", { username, password: a, code });
+    location.replace("/admin");
   });
 
   /* ---------- start ---------- */
 
   fetch("/api/auth/me").then((r) => r.json()).then(({ user, setupNeeded }) => {
     if (user) { location.replace(next); return; }
-    if (setupNeeded) {
-      $("#setup").hidden = false;
-      $("#sname").focus();
-    } else {
-      $("#signin").hidden = false;
-      showPeople();
-      (recent().length ? $("#people button") : $("#name")).focus();
-    }
+    show(setupNeeded ? "setup" : "signin");
   }).catch(() => {
-    $("#signin").hidden = false;
+    show("signin");
     $("#err").textContent = "Couldn't reach the diary. Check your connection and reload.";
   });
 })();

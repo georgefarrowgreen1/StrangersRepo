@@ -1,4 +1,4 @@
-// Accounts: sign in with name + PIN, signed session cookies, and the first-admin setup.
+// Accounts: sign in with username + password, signed session cookies, first-admin setup and recovery.
 import { ApiError, Env, SQL_NOW_MS, invalid, json, readJson, safeEqual } from "./http";
 
 export type Role = "admin" | "manager" | "staff";
@@ -6,14 +6,16 @@ export const ROLES: Role[] = ["admin", "manager", "staff"];
 
 export interface User {
   id: string;
-  name: string;
+  name: string; // shown on records
   role: Role;
 }
 
 export interface UserRow extends User {
   name_key: string;
-  pin_hash: string;
+  username: string;
+  pin_hash: string; // password hash; the column names date from PINs
   pin_salt: string;
+  must_change: number;
   active: number;
   session_ver: number;
   failed: number;
@@ -26,13 +28,13 @@ export interface UserRow extends User {
 
 const COOKIE = "sfbb_session";
 const SESSION_MS = 30 * 24 * 3600 * 1000;
-const MAX_FAILS = 5; // wrong PINs in a row before the account locks
+const MAX_FAILS = 5; // wrong passwords in a row before the account locks
 const LOCK_MS = 10 * 60 * 1000;
 const IP_FAILS = 30; // failed sign-ins per IP per 15 minutes
 const WINDOW_MS = 15 * 60 * 1000;
-// PBKDF2 rounds. Kept modest so a sign-in fits the Workers CPU budget; a PIN's real protection is the
-// lockout and the per-IP limit, since any short PIN is quick to brute-force offline whatever the rounds.
-const PIN_ROUNDS = 3000;
+// PBKDF2 rounds for new hashes. Each hash records its own rounds, so this can be raised later without
+// breaking existing passwords. Kept within the Workers CPU budget for a sign-in request.
+const ROUNDS = 10000;
 
 /* ---------- helpers ---------- */
 
@@ -45,6 +47,7 @@ export function newId(bytes = 12): string {
   return hex(crypto.getRandomValues(new Uint8Array(bytes)));
 }
 
+/** A display name as shown on records, e.g. "Sam Patel". */
 export function cleanName(s: unknown): string | null {
   if (typeof s !== "string") return null;
   const name = s.replace(/[\u0000-\u001f\u007f]/g, "").replace(/\s+/g, " ").trim();
@@ -53,24 +56,44 @@ export function cleanName(s: unknown): string | null {
 
 export const nameKey = (name: string) => name.toLowerCase();
 
-export function checkPin(pin: unknown): string {
-  if (typeof pin !== "string" || !/^\d{4,6}$/.test(pin)) throw invalid("The PIN must be 4 to 6 digits.");
-  return pin;
+/** Usernames: 3-32 characters, lower-case letters, digits, dots, dashes and underscores. */
+export function checkUsername(u: unknown): string {
+  const v = typeof u === "string" ? u.trim().toLowerCase() : "";
+  if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(v)) {
+    throw invalid("Usernames are 3 to 32 characters: letters, numbers, dots, dashes or underscores.");
+  }
+  return v;
 }
 
-export function randomPin(): string {
-  const n = crypto.getRandomValues(new Uint32Array(1))[0] % 1_000_000;
-  return String(n).padStart(6, "0");
+/** A suggested username from a name: "Sam O'Brien" -> "sam.obrien". */
+export function usernameFrom(name: string): string {
+  const u = name.toLowerCase().normalize("NFKD").replace(/[^a-z0-9 .-]/g, "").trim().replace(/\s+/g, ".");
+  return (u.length >= 3 ? u : (u + "user").slice(0, 8)).slice(0, 32);
 }
 
-export async function hashPin(pin: string, salt = newId(16)): Promise<{ hash: string; salt: string }> {
-  const key = await crypto.subtle.importKey("raw", enc.encode(pin), "PBKDF2", false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: enc.encode(salt), iterations: PIN_ROUNDS }, key, 256);
-  return { hash: `p${PIN_ROUNDS}:${hex(bits)}`, salt };
+export function checkPassword(pw: unknown): string {
+  if (typeof pw !== "string" || pw.length < 8) throw invalid("Passwords need at least 8 characters.");
+  if (pw.length > 128) throw invalid("Passwords can be up to 128 characters.");
+  return pw;
 }
 
-async function pinMatches(pin: string, row: { pin_hash: string; pin_salt: string }): Promise<boolean> {
-  const { hash } = await hashPin(pin, row.pin_salt);
+/** A temporary password that's easy to read out and type: e.g. "k7mp-2rqx-h9tw". */
+export function tempPassword(): string {
+  const abc = "abcdefghjkmnpqrstuvwxyz23456789"; // no 0/o, 1/l/i
+  const b = crypto.getRandomValues(new Uint8Array(12));
+  const s = [...b].map((x) => abc[x % abc.length]).join("");
+  return `${s.slice(0, 4)}-${s.slice(4, 8)}-${s.slice(8)}`;
+}
+
+export async function hashPassword(pw: string, salt = newId(16), rounds = ROUNDS): Promise<{ hash: string; salt: string }> {
+  const key = await crypto.subtle.importKey("raw", enc.encode(pw), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: enc.encode(salt), iterations: rounds }, key, 256);
+  return { hash: `p${rounds}:${hex(bits)}`, salt };
+}
+
+async function passwordMatches(pw: string, row: { pin_hash: string; pin_salt: string }): Promise<boolean> {
+  const rounds = Number(/^p(\d+):/.exec(row.pin_hash)?.[1]) || ROUNDS;
+  const { hash } = await hashPassword(pw, row.pin_salt, rounds);
   return safeEqual(hash, row.pin_hash);
 }
 
@@ -93,7 +116,7 @@ function sessionKey(env: Env): Promise<CryptoKey> {
   return keyPromise;
 }
 
-async function sessionCookie(env: Env, user: { id: string; session_ver: number }): Promise<string> {
+export async function sessionCookie(env: Env, user: { id: string; session_ver: number }): Promise<string> {
   const payload = b64url(enc.encode(JSON.stringify({ u: user.id, v: user.session_ver, e: Date.now() + SESSION_MS })));
   const sig = b64url(new Uint8Array(await crypto.subtle.sign("HMAC", await sessionKey(env), enc.encode(payload))));
   return `${COOKIE}=${payload}.${sig}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_MS / 1000}`;
@@ -148,10 +171,53 @@ function missingTokenMessage(env: Env): string {
 
 /* ---------- routes: /api/auth/* ---------- */
 
-const publicUser = (u: User) => ({ id: u.id, name: u.name, role: u.role, recordId: "web:" + u.name });
+const publicUser = (u: UserRow | User) => ({
+  id: u.id, name: u.name, role: u.role, recordId: "web:" + u.name, ...("username" in u ? { username: u.username } : {}),
+});
 
 async function userCount(env: Env): Promise<number> {
   return (await env.DB.prepare("SELECT COUNT(*) AS n FROM users").first<{ n: number }>())?.n ?? 0;
+}
+
+async function checkSetupCode(env: Env, ip: string, code: unknown): Promise<void> {
+  if (!env.SYNC_TOKEN) throw new ApiError(503, "no_setup_code", missingTokenMessage(env));
+  if ((await ipFailures(env, ip)) >= IP_FAILS) throw new ApiError(429, "rate_limited", "Too many attempts. Wait 15 minutes.");
+  if (typeof code !== "string" || !(await safeEqual(code.trim(), env.SYNC_TOKEN))) {
+    await recordIpFailure(env, ip);
+    throw new ApiError(403, "wrong_setup_code", "That setup code isn't right. It's the sync token you set in Cloudflare.");
+  }
+}
+
+/** Checks a username and password, counting failures per account and per IP. Returns the account. */
+async function verifyLogin(env: Env, ip: string, username: unknown, password: unknown): Promise<UserRow> {
+  if ((await ipFailures(env, ip)) >= IP_FAILS) {
+    throw new ApiError(429, "rate_limited", "Too many wrong attempts from this connection. Wait 15 minutes.");
+  }
+  const u = typeof username === "string" ? username.trim().toLowerCase() : "";
+  const pw = typeof password === "string" ? password : "";
+  const row = u ? await env.DB.prepare("SELECT * FROM users WHERE username = ?").bind(u).first<UserRow>() : null;
+  const wrong = new ApiError(401, "wrong_password", "That username and password don't match. Check both and try again.");
+  if (!row || !row.active) {
+    await hashPassword(pw || "x"); // same work as a real check, so timing doesn't reveal which usernames exist
+    await recordIpFailure(env, ip);
+    throw wrong;
+  }
+  const now = Date.now();
+  if (row.locked_until > now) {
+    const mins = Math.ceil((row.locked_until - now) / 60000);
+    throw new ApiError(423, "locked", `Too many wrong passwords. Try again in ${mins} minute${mins === 1 ? "" : "s"}, or ask an admin to reset your password.`);
+  }
+  if (!(await passwordMatches(pw, row))) {
+    const failed = row.failed + 1;
+    const lock = failed >= MAX_FAILS;
+    await env.DB.prepare("UPDATE users SET failed = ?, locked_until = ? WHERE id = ?")
+      .bind(lock ? 0 : failed, lock ? now + LOCK_MS : row.locked_until, row.id).run();
+    await recordIpFailure(env, ip);
+    if (lock) throw new ApiError(423, "locked", "Too many wrong passwords. Try again in 10 minutes, or ask an admin to reset your password.");
+    const left = MAX_FAILS - failed;
+    throw new ApiError(401, "wrong_password", `That username and password don't match. ${left} ${left === 1 ? "try" : "tries"} left before a 10-minute lock.`);
+  }
+  return row;
 }
 
 export async function handleAuth(req: Request, env: Env, route: string, current: User | null): Promise<Response> {
@@ -165,79 +231,66 @@ export async function handleAuth(req: Request, env: Env, route: string, current:
     return json({ ok: true }, 200, { "set-cookie": clearCookie });
   }
 
+  // First admin. Guarded by the setup code (the sync token), which only the host has.
   if (route === "setup" && req.method === "POST") {
-    // The very first account becomes an admin. Guarded by the sync token, which only the host has.
     const body = await readJson<any>(req, 4096);
     if ((await userCount(env)) > 0) throw new ApiError(409, "already_set_up", "An admin already exists. Sign in instead.");
-    if (!env.SYNC_TOKEN) throw new ApiError(503, "no_setup_code", missingTokenMessage(env));
-    if ((await ipFailures(env, ip)) >= IP_FAILS) throw new ApiError(429, "rate_limited", "Too many attempts. Wait 15 minutes.");
-    if (typeof body.code !== "string" || !(await safeEqual(body.code.trim(), env.SYNC_TOKEN))) {
-      await recordIpFailure(env, ip);
-      throw new ApiError(403, "wrong_setup_code", "That setup code isn't right. It's the sync token you set in Cloudflare.");
-    }
+    await checkSetupCode(env, ip, body.code);
     const name = cleanName(body.name);
     if (!name) throw invalid("Enter your name (up to 60 characters).");
-    const { hash, salt } = await hashPin(checkPin(body.pin));
+    const username = checkUsername(body.username);
+    const { hash, salt } = await hashPassword(checkPassword(body.password));
     const id = newId();
     const res = await env.DB.prepare(
-      `INSERT INTO users (id, name, name_key, role, pin_hash, pin_salt, created_at, created_by, updated_at, last_login_at)
-       SELECT ?, ?, ?, 'admin', ?, ?, ${SQL_NOW_MS}, 'setup', ${SQL_NOW_MS}, ${SQL_NOW_MS} WHERE NOT EXISTS (SELECT 1 FROM users)`,
-    ).bind(id, name, nameKey(name), hash, salt).run();
+      `INSERT INTO users (id, name, name_key, username, role, pin_hash, pin_salt, created_at, created_by, updated_at, last_login_at)
+       SELECT ?, ?, ?, ?, 'admin', ?, ?, ${SQL_NOW_MS}, 'setup', ${SQL_NOW_MS}, ${SQL_NOW_MS} WHERE NOT EXISTS (SELECT 1 FROM users)`,
+    ).bind(id, name, nameKey(name), username, hash, salt).run();
     if (!res.meta.changes) throw new ApiError(409, "already_set_up", "An admin already exists. Sign in instead.");
-    const user: User = { id, name, role: "admin" };
-    return json({ user: publicUser(user) }, 200, { "set-cookie": await sessionCookie(env, { id, session_ver: 1 }) });
+    return json({ user: publicUser({ id, name, role: "admin" }) }, 200, { "set-cookie": await sessionCookie(env, { id, session_ver: 1 }) });
   }
 
+  // An admin who has forgotten their password sets a new one with the setup code.
   if (route === "recover" && req.method === "POST") {
-    // An admin who has forgotten their PIN sets a new one with the setup code (the sync token).
     const body = await readJson<any>(req, 4096);
-    if (!env.SYNC_TOKEN) throw new ApiError(503, "no_setup_code", "Set the SYNC_TOKEN secret in Cloudflare first; it's the setup code.");
-    if ((await ipFailures(env, ip)) >= IP_FAILS) throw new ApiError(429, "rate_limited", "Too many attempts. Wait 15 minutes.");
-    if (typeof body.code !== "string" || !(await safeEqual(body.code.trim(), env.SYNC_TOKEN))) {
-      await recordIpFailure(env, ip);
-      throw new ApiError(403, "wrong_setup_code", "That setup code isn't right. It's the sync token you set in Cloudflare.");
-    }
-    const name = cleanName(body.name);
-    const row = name ? await env.DB.prepare("SELECT * FROM users WHERE name_key = ? AND role = 'admin' AND active = 1").bind(nameKey(name)).first<UserRow>() : null;
-    if (!row) throw new ApiError(404, "not_admin", "There's no active admin with that name.");
-    const { hash, salt } = await hashPin(checkPin(body.pin));
+    await checkSetupCode(env, ip, body.code);
+    const username = typeof body.username === "string" ? body.username.trim().toLowerCase() : "";
+    const row = username
+      ? await env.DB.prepare("SELECT * FROM users WHERE username = ? AND role = 'admin' AND active = 1").bind(username).first<UserRow>()
+      : null;
+    if (!row) throw new ApiError(404, "not_admin", "There's no active admin with that username.");
+    const { hash, salt } = await hashPassword(checkPassword(body.password));
     await env.DB.prepare(
-      `UPDATE users SET pin_hash = ?, pin_salt = ?, failed = 0, locked_until = 0, session_ver = session_ver + 1,
+      `UPDATE users SET pin_hash = ?, pin_salt = ?, must_change = 0, failed = 0, locked_until = 0, session_ver = session_ver + 1,
          updated_at = ${SQL_NOW_MS}, last_login_at = ${SQL_NOW_MS} WHERE id = ?`,
     ).bind(hash, salt, row.id).run();
     return json({ user: publicUser(row) }, 200, { "set-cookie": await sessionCookie(env, { id: row.id, session_ver: row.session_ver + 1 }) });
   }
 
+  // Sign in. A temporary password (set by an admin, or carried over from a PIN) signs nobody in: the
+  // page then asks for a new password and calls /change.
   if (route === "login" && req.method === "POST") {
     const body = await readJson<any>(req, 4096);
-    if ((await ipFailures(env, ip)) >= IP_FAILS) {
-      throw new ApiError(429, "rate_limited", "Too many wrong attempts from this connection. Wait 15 minutes.");
-    }
-    const name = cleanName(body.name);
-    const pin = typeof body.pin === "string" ? body.pin : "";
-    const row = name ? await env.DB.prepare("SELECT * FROM users WHERE name_key = ?").bind(nameKey(name)).first<UserRow>() : null;
-    const wrong = new ApiError(401, "wrong_pin", "That name and PIN don't match. Check both and try again.");
-    if (!row || !row.active) {
-      await hashPin(pin || "0000"); // same work as a real check, so timing doesn't reveal which names exist
-      await recordIpFailure(env, ip);
-      throw wrong;
-    }
-    const now = Date.now();
-    if (row.locked_until > now) {
-      const mins = Math.ceil((row.locked_until - now) / 60000);
-      throw new ApiError(423, "locked", `Too many wrong PINs. Try again in ${mins} minute${mins === 1 ? "" : "s"}, or ask an admin to reset your PIN.`);
-    }
-    if (!(await pinMatches(pin, row))) {
-      const failed = row.failed + 1;
-      const lock = failed >= MAX_FAILS;
-      await env.DB.prepare("UPDATE users SET failed = ?, locked_until = ? WHERE id = ?")
-        .bind(lock ? 0 : failed, lock ? now + LOCK_MS : row.locked_until, row.id).run();
-      await recordIpFailure(env, ip);
-      if (lock) throw new ApiError(423, "locked", "Too many wrong PINs. Try again in 10 minutes, or ask an admin to reset your PIN.");
-      throw wrong;
+    const row = await verifyLogin(env, ip, body.username, body.password);
+    if (row.must_change) {
+      await env.DB.prepare("UPDATE users SET failed = 0 WHERE id = ?").bind(row.id).run();
+      return json({ mustChange: true, name: row.name });
     }
     await env.DB.prepare(`UPDATE users SET failed = 0, locked_until = 0, last_login_at = ${SQL_NOW_MS} WHERE id = ?`).bind(row.id).run();
     return json({ user: publicUser(row) }, 200, { "set-cookie": await sessionCookie(env, row) });
+  }
+
+  // Change password (needs the current one). Ends the person's other sessions and signs them in here.
+  if (route === "change" && req.method === "POST") {
+    const body = await readJson<any>(req, 4096);
+    const row = await verifyLogin(env, ip, body.username, body.password);
+    const next = checkPassword(body.newPassword);
+    if (next === body.password) throw invalid("Choose a password different from the current one.");
+    const { hash, salt } = await hashPassword(next);
+    await env.DB.prepare(
+      `UPDATE users SET pin_hash = ?, pin_salt = ?, must_change = 0, failed = 0, locked_until = 0, session_ver = session_ver + 1,
+         updated_at = ${SQL_NOW_MS}, last_login_at = ${SQL_NOW_MS} WHERE id = ?`,
+    ).bind(hash, salt, row.id).run();
+    return json({ user: publicUser(row) }, 200, { "set-cookie": await sessionCookie(env, { id: row.id, session_ver: row.session_ver + 1 }) });
   }
 
   throw new ApiError(404, "not_found", "Unknown route.");

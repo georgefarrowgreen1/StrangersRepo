@@ -1,6 +1,6 @@
 # Build brief: Strangers Coffee Kitchen Diary website
 
-You are setting up a staff website at **https://strangers.georgefarrowgreen.com** for Strangers Coffee, a UK coffee business with four sites in Norwich. Staff sign in with their name and a PIN (see Access below). The site is a copy of an existing food safety diary (Safer Food, Better Business) that runs as a Claude artifact in the owner's (Will's) Claude account. **The Claude artifact is the master copy.** This website keeps its own copy of the data in Cloudflare D1, and Will's Claude syncs the two every hour through an API you build here.
+You are setting up a staff website at **https://strangers.georgefarrowgreen.com** for Strangers Coffee, a UK coffee business with four sites in Norwich. Staff sign in with a username and password (see Access below). The site is a copy of an existing food safety diary (Safer Food, Better Business) that runs as a Claude artifact in the owner's (Will's) Claude account. **The Claude artifact is the master copy.** This website keeps its own copy of the data in Cloudflare D1, and Will's Claude syncs the two every hour through an API you build here.
 
 Read this whole file, then `docs/data-model.md`, `docs/runtime-api.md` and `docs/sync.md` before writing code. The person running you is the host, not Will. Ask them before anything that costs money, changes DNS, or needs a secret.
 
@@ -36,14 +36,14 @@ Only two edits to the HTML are allowed, applied by a build step so the reference
 
 ## Access
 
-**Staff accounts, name + PIN.** Access control stays in one place: `authorize()` in `src/access.ts`, with sign-in and sessions in `src/auth.ts` and the admin API in `src/admin.ts`.
+**Staff accounts, username + password.** Access control stays in one place: `authorize()` in `src/access.ts`, with sign-in and sessions in `src/auth.ts` and the admin API in `src/admin.ts`.
 - Signed out, only the sign-in page (`/signin`) and its files are reachable. Everything else redirects there, and the API returns 401 `unauthenticated` (the shim then sends the person to sign in). `/api/sync/*` needs only the sync token.
-- People sign in with their name and a 4–6 digit PIN. The sign-in page shows one-tap buttons for people who have signed in on that device before; names are never listed publicly. Wrong PINs lock the account for 10 minutes after 5 tries, and each IP is limited to 30 failed attempts per 15 minutes.
-- Sessions are `HttpOnly; Secure; SameSite=Lax` cookies, HMAC-signed with a key the Worker generates and keeps in D1 (`secrets` table), valid 30 days. Resetting a PIN, renaming, switching off or "sign out everywhere" ends all of that person's sessions.
+- A conventional sign-in form: **username** and **password** (8+ characters). Each account also has a display **name**, shown on records; it isn't typed at sign-in. Admins give out temporary passwords; people choose their own at first sign-in, and can change it from the sign-in page. Five wrong passwords lock the account for 10 minutes, and each IP is limited to 30 failed attempts per 15 minutes.
+- Sessions are `HttpOnly; Secure; SameSite=Lax` cookies, HMAC-signed with a key the Worker generates and keeps in D1 (`secrets` table), valid 30 days. A new password, renaming, switching off or "sign out everywhere" ends all of that person's sessions.
 - Roles: **staff** (daily diary, end of week, last 4 weeks, extra checks, cleaning, Prove it, allergens), **manager** (also EHO, HACCP & risk, suppliers, contacts, staff training, onboarding, 4-weekly review, Setup) and **admin** (also `/admin`). The Worker refuses staff writes to manager data with `permission_denied` (never `invalid_argument`, which the page treats as read-only for everything); the shim hides those sections.
-- The first account is created on the sign-in page with the **setup code**, which is the `SYNC_TOKEN`. The same code lets an admin who forgot their PIN set a new one.
+- The first account is created on the sign-in page with the **setup code**, which is the `SYNC_TOKEN`. The same code lets an admin who forgot their password set a new one.
 - Records still use `web:<name>` as the user id, so a person's history follows their name. `user.me()` returns `{id:"web:Sam Patel", name:"Sam Patel", avatarUrl:""}`.
-- The header shows "Recording as Sam Patel · Switch user · Admin" (Admin for admins only); staff share devices.
+- The header shows "Recording as Sam Patel · Sign out · Admin" (Admin for admins only); staff share devices.
 - Writes are rate-limited per IP (`WRITE_LIMIT_PER_15_MIN`), and the site keeps the `noindex` meta plus a `robots.txt` that disallows everything.
 
 Alternative not built: per-person email sign-in with **Cloudflare Access** (One-time PIN to email, with a bypass policy for `/api/sync/*`, reading `Cf-Access-Authenticated-User-Email`).
@@ -56,7 +56,7 @@ Routes under `/api/sync/` require `Authorization: Bearer <SYNC_TOKEN>` (constant
 
 1. Scaffold the Worker, D1 schema and KV binding. Run locally with `wrangler dev`.
 2. Write `claude-shim.js` and the db/assets API, following `docs/runtime-api.md` closely (especially `update`'s deep merge and the error codes).
-3. Accounts (name + PIN sign-in, roles, admin page), "Switch user" control and write rate limiting.
+3. Accounts (username + password sign-in, roles, admin page), "Sign out" control and write rate limiting.
 4. Sync endpoints, per `docs/sync.md`.
 5. Local tests. At minimum:
    - Seed a few documents for two sites. Load the page, switch sites, tick an opening check, sign off a day with a name, sign off a week with a name, mark a cleaning job done, add an allergen item, upload a PDF and open it.

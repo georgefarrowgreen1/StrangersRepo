@@ -6,12 +6,12 @@ The site is one Cloudflare Worker serving the diary page unchanged, plus the API
 |---|---|
 | `reference/kitchen-diary.html` | The page from Will's Claude diary. **Never edit it**; replace it when Will sends a new version. |
 | `scripts/build.mjs` | Builds `dist/` from the page, adding only the `noindex` meta tag and the `claude-shim.js` script tag. Runs automatically on every deploy. |
-| `public/claude-shim.js` | Provides `window.claude` (db, user, assets) on the website, the "Switch user" and "Admin" links, and hides manager sections from staff. |
-| `public/signin.html`, `public/signin.js` | The sign-in page (and first-admin setup and admin PIN recovery). |
+| `public/claude-shim.js` | Provides `window.claude` (db, user, assets) on the website, the "Sign out" and "Admin" links, and hides manager sections from staff. |
+| `public/signin.html`, `public/signin.js` | The sign-in page (with password change, first-admin setup and admin password recovery). |
 | `public/admin.html`, `public/admin.js` | The admin page: people and sync status. |
 | `public/theme.css` | The Liquid Glass theme, loaded by the shim on top of the page's own styles. See `docs/ui-ux-audit.md`. |
 | `public/icon-*.png`, `public/manifest.webmanifest` | Home Screen icon and app settings. |
-| `src/` | The Worker: `access.ts` (access control, roles and write rate limiting, in one place), `auth.ts` (name + PIN sign-in and sessions), `admin.ts` (admin API), `docs.ts` (db API), `assets.ts` (PDFs), `sync.ts` (sync API for Will's Claude), `schema.ts` (database tables, created automatically). |
+| `src/` | The Worker: `access.ts` (access control, roles and write rate limiting, in one place), `auth.ts` (username + password sign-in and sessions), `admin.ts` (admin API), `docs.ts` (db API), `assets.ts` (PDFs), `sync.ts` (sync API for Will's Claude), `schema.ts` (database tables, created automatically). |
 | `test/` | `api.test.mjs` (API and sync) and `e2e.test.mjs` (the real page in a browser). |
 
 Data lives in a D1 database and allergen PDFs in a KV namespace. Cloudflare creates both on the first deploy, and the Worker creates its own tables, so there are no ids to copy and no migrations to run. The only secret is `SYNC_TOKEN`.
@@ -71,12 +71,14 @@ Writes are limited to 600 per IP address per 15 minutes (`WRITE_LIMIT_PER_15_MIN
 
 ## Accounts
 
-- **First admin.** After deploying, open the site. With no accounts yet it shows "Set up the first admin account". Enter your name, choose a PIN, and give the **setup code**, which is the `SYNC_TOKEN` secret. You land on the Admin page.
-- **Adding people.** Admin page → **Add a person**: their name, role (staff, manager or admin), and a PIN, or leave the PIN blank to have one created. The PIN is shown once: give it to them in person. Use the exact name they've recorded under before, so their history stays together.
-- **Forgotten PIN.** An admin opens **Manage** next to the person and sets or creates a new PIN. That signs them out everywhere.
-- **Locked out.** Five wrong PINs lock an account for 10 minutes. An admin can **Unlock** it straight away.
+- **First admin.** After deploying, open the site. With no accounts yet it shows "Set up the first admin". Enter your name (shown on records), a username, a password, and the **setup code**, which is the `SYNC_TOKEN` secret. You land on the Admin page.
+- **Adding people.** Admin page → **Add a person**: their name (as it should appear on records), a username (suggested from the name), their role, and a temporary password, or leave it blank to have one created. Give them the username and temporary password in person; they choose their own password when they first sign in. If they've recorded entries under a name before, use exactly that name to keep their history together.
+- **Changing a password.** Anyone can, from the sign-in page ("Change password"), with their current one.
+- **Forgotten password.** An admin opens **Manage** next to the person and sets or creates a temporary password. That signs them out everywhere.
+- **Locked out.** Five wrong passwords lock an account for 10 minutes. An admin can **Unlock** it straight away.
 - **Someone leaves.** **Manage → Switch off.** They can't sign in, and their records stay.
-- **The only admin forgot their PIN.** On the sign-in page, choose "I'm an admin and I've forgotten my PIN" and use the setup code.
+- **The only admin forgot their password.** On the sign-in page, choose "Admin? Forgotten password" and use the setup code.
 - **Changing the sync token** also changes the setup code. Existing accounts and sessions are unaffected.
+- **Accounts from before usernames** (when people signed in with name + PIN) were given a username made from their name, for example `sam.patel`. Their old PIN works once, to sign in, and then they choose a password.
 
 Access is decided in one function, `authorize()` in `src/access.ts`. Sign-in and sessions are in `src/auth.ts`, the admin API in `src/admin.ts`. Section permissions are `MANAGER_TABS` and `MANAGER_COLLECTIONS` in `src/access.ts`, mirrored by `MANAGER_TABS` in `public/claude-shim.js`.

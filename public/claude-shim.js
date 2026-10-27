@@ -44,12 +44,12 @@
     location.replace("/signin");
   }
 
-  // "Recording as Sam Patel · Switch user · Admin": the page fills #who; add the links beside its text.
+  // "Recording as Sam Patel · Sign out · Admin": the page fills #who; add the links beside its text.
   function addWhoLinks() {
     const who = document.getElementById("who");
     if (!who || !who.firstChild || who.querySelector(".shim-change")) return;
     const sep = () => Object.assign(document.createElement("span"), { className: "by shim-sep", textContent: "·" });
-    const sw = Object.assign(document.createElement("button"), { type: "button", className: "shim-change", textContent: "Switch user" });
+    const sw = Object.assign(document.createElement("button"), { type: "button", className: "shim-change", textContent: "Sign out" });
     sw.addEventListener("click", switchUser);
     who.append(sep(), sw);
     mePromise.then((u) => {

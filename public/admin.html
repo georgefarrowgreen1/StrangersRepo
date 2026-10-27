@@ -42,7 +42,7 @@
   .person.off .who strong{color:var(--muted);text-decoration:line-through}
   .editor{grid-column:1/-1;display:grid;gap:12px;padding:14px;border-radius:16px;background:var(--sunk)}
   .pinbox{display:grid;gap:4px;padding:14px 16px;border-radius:16px;background:var(--ok-bg)}
-  .pinbox b{font-family:var(--mono);font-size:30px;letter-spacing:.2em}
+  .pinbox b{font-family:var(--mono);font-size:26px;letter-spacing:.06em;word-break:break-all}
   .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,160px),1fr));gap:10px}
   .stat{padding:12px 14px;border-radius:16px;background:var(--sunk);display:grid;gap:2px}
   .stat b{font-size:20px}
@@ -76,15 +76,16 @@
   <section class="panel" aria-labelledby="addTitle">
     <h2 id="addTitle">Add a person</h2>
     <form id="add" class="fields" novalidate>
-      <div class="field"><label for="aname">Name</label><input type="text" id="aname" autocapitalize="words" maxlength="60" placeholder="e.g. Sam Patel" required></div>
+      <div class="field"><label for="aname">Name (shown on records)</label><input type="text" id="aname" autocapitalize="words" maxlength="60" placeholder="e.g. Sam Patel" required></div>
+      <div class="field"><label for="auser">Username</label><input type="text" id="auser" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="32" placeholder="e.g. sam.patel" required></div>
       <div class="field"><label for="arole">Role</label>
         <select id="arole"><option value="staff">Staff</option><option value="manager">Manager</option><option value="admin">Admin</option></select></div>
-      <div class="field"><label for="apin">PIN (optional)</label><input type="text" id="apin" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="Leave blank to create one" autocomplete="off"></div>
+      <div class="field"><label for="apw">Temporary password (optional)</label><input type="text" id="apw" maxlength="128" placeholder="Leave blank to create one" autocomplete="off" autocapitalize="none" spellcheck="false"></div>
       <div class="field" style="align-self:end"><button class="btn" type="submit">Add person</button></div>
     </form>
-    <p class="note">Use the name they'll sign in with and that should appear on records. If they've already recorded entries under a name, use exactly that name to keep their history together.</p>
+    <p class="note">They sign in with the username and a temporary password, then choose their own password. The name is what appears on their records: if they've already recorded entries under a name, use exactly that name to keep their history together.</p>
     <p class="err" id="addErr" role="alert"></p>
-    <div class="pinbox" id="newPin" hidden role="status"></div>
+    <div class="pinbox" id="newPw" hidden role="status"></div>
   </section>
 
   <section class="panel" aria-labelledby="syncTitle">

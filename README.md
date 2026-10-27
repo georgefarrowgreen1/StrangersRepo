@@ -43,9 +43,9 @@ Once your friend has deployed the site and sent you the sync token:
 
 ### Accounts
 
-Everyone signs in with their **name and a PIN**. Without signing in, only the sign-in page is visible. There are three roles:
+Everyone signs in with a **username and password**. Without signing in, only the sign-in page is visible. There are three roles:
 - **Staff**: the daily diary, end of week, last 4 weeks, extra checks, cleaning, Prove it and allergens.
 - **Managers**: also EHO, HACCP & risk, suppliers, contacts, staff training, onboarding, the 4-weekly review and Setup.
-- **Admins**: everything, plus the **Admin** page, where they add people, change roles, reset PINs and switch accounts off. It also shows whether the sync is running.
+- **Admins**: everything, plus the **Admin** page, where they add people, change roles, set temporary passwords and switch accounts off. It also shows whether the sync is running.
 
-Records made on the website show the signed-in person's name, exactly as before.
+Records made on the website show the person's name (set by the admin), not their username.
