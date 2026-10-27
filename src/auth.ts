@@ -134,6 +134,18 @@ async function recordIpFailure(env: Env, ip: string): Promise<void> {
     .bind("login:" + ip, window).run();
 }
 
+/** Why setup can't start, naming the text settings the Worker can see (names only, never values) so a
+ * secret saved under a slightly different name, or in the wrong place, is easy to spot. Only reachable
+ * before the first admin exists. */
+function missingTokenMessage(env: Env): string {
+  const seen = Object.entries(env as unknown as Record<string, unknown>)
+    .filter(([, v]) => typeof v === "string")
+    .map(([k]) => JSON.stringify(k));
+  return "The site can't see a SYNC_TOKEN secret, so there's no setup code yet. Add it in Cloudflare under " +
+    "Workers & Pages → strangers-kitchen-diary → Settings → Variables and Secrets (not the Build section). " +
+    `Settings the site can see: ${seen.length ? seen.join(", ") : "none"}.`;
+}
+
 /* ---------- routes: /api/auth/* ---------- */
 
 const publicUser = (u: User) => ({ id: u.id, name: u.name, role: u.role, recordId: "web:" + u.name });
@@ -157,7 +169,7 @@ export async function handleAuth(req: Request, env: Env, route: string, current:
     // The very first account becomes an admin. Guarded by the sync token, which only the host has.
     const body = await readJson<any>(req, 4096);
     if ((await userCount(env)) > 0) throw new ApiError(409, "already_set_up", "An admin already exists. Sign in instead.");
-    if (!env.SYNC_TOKEN) throw new ApiError(503, "no_setup_code", "Set the SYNC_TOKEN secret in Cloudflare first; it's the setup code.");
+    if (!env.SYNC_TOKEN) throw new ApiError(503, "no_setup_code", missingTokenMessage(env));
     if ((await ipFailures(env, ip)) >= IP_FAILS) throw new ApiError(429, "rate_limited", "Too many attempts. Wait 15 minutes.");
     if (typeof body.code !== "string" || !(await safeEqual(body.code.trim(), env.SYNC_TOKEN))) {
       await recordIpFailure(env, ip);
