@@ -94,27 +94,37 @@ header.top .label{color:var(--accent)}
 .sites{gap:10px}
 .site{border-radius:18px;padding:12px 14px;transition:transform .2s cubic-bezier(.2,.8,.2,1),box-shadow .2s}
 .site b{font-family:var(--display);font-stretch:normal;font-weight:700;font-size:18px;letter-spacing:-.02em}
-.site .by{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.site .by{white-space:normal;text-wrap:balance;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .site[aria-pressed="true"]{background:var(--glass-thick);border-color:var(--accent);box-shadow:var(--glass-hi),0 0 0 1.5px var(--accent),var(--float)}
 
-/* ---------- tab bar: a floating glass bar pinned to the top ---------- */
+/* ---------- tab bar ---------- */
 .wrap>header.top{order:-3}
 .wrap>#sites{order:-2}
 .wrap>nav.tabs{order:-1}
-nav.tabs{position:sticky;top:calc(env(safe-area-inset-top,0px) + 8px);z-index:4;border-radius:24px;padding:8px;gap:6px;margin-inline:-4px}
+nav.tabs{border-radius:24px;padding:8px;gap:4px;margin-inline:-4px}
 nav.tabs .grp{gap:4px}
-nav.tabs .grp>.label{width:auto;padding:0 6px 0 8px;font-size:10.5px}
-nav.tabs button{background:transparent;border:0;border-radius:99px;color:var(--fg);font-weight:600;font-size:14px;padding:7px 13px;transition:background-color .2s,color .2s}
-nav.tabs button:hover{background:var(--sunk)}
+nav.tabs .grp>.label{font-size:10.5px}
+nav.tabs button{background:var(--sunk);border:0;border-radius:99px;color:var(--fg);font-weight:600;font-size:14px;padding:7px 14px;transition:background-color .2s,color .2s}
+nav.tabs button:hover{background:color-mix(in srgb,var(--fg) 12%,transparent)}
 nav.tabs button[aria-selected="true"]{background:var(--accent);color:var(--accent-ink);box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 4px 12px -2px color-mix(in srgb,var(--accent) 55%,transparent)}
-/* Phones: one row that scrolls sideways, edges fading out to hint there's more. */
-@media (max-width:720px){
-  nav.tabs{display:flex;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x proximity;scrollbar-width:none;
+
+/* Mouse and keyboard on a wide screen: every section visible at once, groups in labelled rows
+   (wrapped rows stay aligned after the label). Not pinned, so it never covers the page. */
+@media (min-width:721px) and (pointer:fine){
+  nav.tabs .grp{position:relative;padding-left:104px;min-height:36px}
+  nav.tabs .grp>.label{position:absolute;left:8px;top:11px;width:auto;padding:0}
+}
+
+/* Touch screens (phones and iPads) and narrow windows: one compact row pinned to the top that
+   scrolls sideways, edges fading to hint there's more. */
+@media (max-width:720px),(pointer:coarse){
+  nav.tabs{position:sticky;top:calc(env(safe-area-inset-top,0px) + 8px);z-index:4;
+    display:flex;align-items:center;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x proximity;scrollbar-width:none;
     -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 14px,#000 calc(100% - 22px),transparent);mask-image:linear-gradient(90deg,transparent 0,#000 14px,#000 calc(100% - 22px),transparent)}
   nav.tabs::-webkit-scrollbar{display:none}
   nav.tabs .grp{flex-wrap:nowrap;flex:none}
-  nav.tabs .grp>.label{width:auto;padding-left:10px}
-  nav.tabs .grp+.grp{border-left:1px solid var(--line);padding-left:4px}
+  nav.tabs .grp>.label{width:auto;padding:0 4px 0 10px}
+  nav.tabs .grp+.grp{border-left:1px solid var(--line);padding-left:6px;margin-left:4px}
   nav.tabs button{scroll-snap-align:center}
 }
 
