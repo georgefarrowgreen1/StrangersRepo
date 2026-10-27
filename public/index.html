@@ -15,21 +15,38 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/theme.css">
+<link rel="stylesheet" href="/ui.css">
 <style>:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style>
 </head>
 <body>
-<div class="wrap">
-  <header class="top">
-    <div>
-      <div class="label">Safer Food, Better Business</div>
-      <h1>Kitchen Diary</h1>
-      <p class="sub">Daily and weekly checks, cleaning, suppliers, training, Prove it records, allergens and the 4-weekly review. Each site keeps its own records.</p>
-      <div id="ehoHead"></div>
-    </div>
-    <div class="row" id="who"></div>
-  </header>
+<!-- App chrome: top bar (phones and tablets), sidebar (wide screens), bottom tab bar (phones and tablets).
+     Filled in by app.js (renderNav, renderSites). -->
+<header class="appbar" id="appbar">
+  <button class="sitebtn" type="button" data-sitebtn aria-haspopup="dialog"></button>
+  <button class="avatar" type="button" id="avatarBtn" aria-haspopup="menu" aria-label="Account"></button>
+</header>
+<aside class="sidebar" id="sidebar">
+  <button class="sitebtn" type="button" data-sitebtn aria-haspopup="dialog"></button>
+  <nav class="snav" id="snav" aria-label="Sections"></nav>
+  <button class="mebox" type="button" id="meBox" aria-haspopup="menu"></button>
+</aside>
+<nav class="tabbar" id="tabbar" aria-label="Sections"></nav>
 
-  <div class="sites" id="sites" role="group" aria-label="Site"></div>
+<div class="sheetveil" id="sheetVeil" hidden></div>
+<div class="sheet" id="siteSheet" role="dialog" aria-modal="true" aria-labelledby="siteSheetTitle" hidden>
+  <div class="grab" aria-hidden="true"></div>
+  <h2 id="siteSheetTitle">Choose a site</h2>
+  <div class="list" id="siteList"></div>
+  <p class="note">This device remembers the site you choose.</p>
+</div>
+<div class="menu" id="acctMenu" role="menu" aria-label="Account" hidden></div>
+
+<div class="wrap" id="main">
+  <div class="pagehead" id="pagehead">
+    <button class="back" type="button" id="backBtn" hidden></button>
+    <div class="trow"><div class="ptitle"><h1 id="pageTitle">Today</h1><p id="pageSub"></p></div><div id="pageAction"></div></div>
+  </div>
+  <div id="ehoHead" hidden></div>
 
   <div class="banner" id="offline" hidden>The shared diary isn't available in this view. Open it from claude.ai while signed in to record entries.</div>
   <div class="banner" id="readonly" hidden>You can view this diary but not record entries. Ask the owner to give you Contributor access.</div>
@@ -39,29 +56,10 @@
     <div class="att" id="attList"></div>
   </section>
 
-  <nav class="tabs" aria-label="Diary sections">
-    <div class="grp"><span class="label">Diary</span>
-      <button data-tab="day">Daily diary</button>
-      <button data-tab="week">End of week</button>
-      <button data-tab="history">Last 4 weeks</button>
-    </div>
-    <div class="grp"><span class="label">Records</span>
-      <button data-tab="extras">Extra checks</button>
-      <button data-tab="cleaning">Cleaning schedule</button>
-      <button data-tab="prove">Prove it</button>
-      <button data-tab="allergens">Allergens</button>
-    </div>
-    <div class="grp"><span class="label">Management</span>
-      <button data-tab="eho">EHO inspection</button>
-      <button data-tab="plans">HACCP &amp; risk</button>
-      <button data-tab="suppliers">Suppliers</button>
-      <button data-tab="contacts">Contacts</button>
-      <button data-tab="staff">Staff training</button>
-      <button data-tab="onboarding">Onboarding</button>
-      <button data-tab="review">4-weekly review</button>
-      <button data-tab="setup">Setup</button>
-    </div>
-  </nav>
+
+  <!-- RECORDS and MORE: lists of sections (phones and tablets) -->
+  <div data-panel="records" class="stack" hidden><div class="list glass" id="recordsHub"></div></div>
+  <div data-panel="more" class="stack" hidden><div id="moreHub" class="stack"></div></div>
 
   <!-- DAILY -->
   <div data-panel="day" class="stack">

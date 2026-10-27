@@ -74,6 +74,7 @@ const S={site:(()=>{try{const s=localStorage.getItem("sfbb.site");return SITES.s
   cfg:null,sum:{},subs:[],allergenDocs:[],assets:null,shared:null,
   db:null,user:null,me:null,canWrite:true,settings:DEFAULT_SETTINGS,days:{},weeks:{},allergens:[],reviews:[],extras:[],cleaning:[],suppliers:[],contacts:[],plans:[],plan:null,onboarding:[],onb:null,inspections:[],insp:null,sample:undefined,staff:[],prove:[],
   date:today(),week:monday(today()),editAlg:null,editStaff:null,names:{},rev:{}};
+S.role="staff";S.myName="";
 const ro=()=>!S.canWrite||!S.db;
 
 /* ---------- sites & per-site paths ---------- */
@@ -1671,7 +1672,7 @@ function siteAttention(id){
 }
 function dueDate(t){const n=FREQ[t.freq],b=t.lastAt||t.importedAt;if(!b||!n)return"";const d=new Date(b);d.setDate(d.getDate()+n);return iso(d)}
 function goDay(date,anchor){
-  S.date=date;show("day");renderDay();
+  S.date=date;show("day");renderDay();renderHead();
   requestAnimationFrame(()=>{const n=$(anchor||"#openList");if(n)n.scrollIntoView({behavior:"smooth",block:"center"})});
 }
 function attRow(siteName,title,sub,pill,actions){
@@ -1681,7 +1682,7 @@ function attRow(siteName,title,sub,pill,actions){
 }
 function renderAttention(){
   const box=$("#attList"),panel=$("#attention");
-  panel.hidden=!S.db;if(!S.db)return;
+  panel.hidden=!S.db||S.tab!=="day";if(!S.db)return;
   const site=curSite(),a=siteAttention(S.site);
   $("#attTitle").textContent=`${site.name}: needs attention`;
   box.replaceChildren();
@@ -1723,15 +1724,136 @@ function renderAttention(){
   }
   if(!a.tasks.length&&tabOn("cleaning",a.s))box.append(attRow(site.name,"Cleaning schedule & extra checks","Nothing overdue",mk("ok","Up to date"),[]));
 }
+/* ---------- app chrome: sites, sections, account ---------- */
+const svgi=(d)=>{const n=document.createElementNS("http://www.w3.org/2000/svg","svg");n.setAttribute("viewBox","0 0 24 24");n.setAttribute("class","i");n.setAttribute("aria-hidden","true");n.innerHTML=d;return n};
+const ICON={
+  today:'<rect x="4" y="5" width="16" height="15" rx="3"/><path d="M4 10h16M9 3v4M15 3v4"/><path d="M9 14.5l2 2 4-4"/>',
+  week:'<rect x="4" y="5" width="16" height="15" rx="3"/><path d="M4 10h16M9 3v4M15 3v4M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01"/>',
+  history:'<path d="M4 12a8 8 0 108-8 8.5 8.5 0 00-6 2.5L4 8"/><path d="M4 4v4h4M12 8v4l3 2"/>',
+  records:'<rect x="5" y="3" width="14" height="18" rx="2.5"/><path d="M9 8h6M9 12h6M9 16h4"/>',
+  more:'<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
+  extras:'<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M6 18l2.5-2.5M15.5 8.5L18 6"/>',
+  cleaning:'<path d="M9 9h6v12H9zM10 9V6h4v3M14 4h3M16 2v4"/>',
+  prove:'<path d="M10 14V5a2 2 0 014 0v9a4 4 0 11-4 0z"/>',
+  allergens:'<path d="M5 19c0-9 6-14 15-14 0 9-5 15-14 15zM5 19l7-7"/>',
+  eho:'<path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/>',
+  plans:'<path d="M9 3h6M10 3v6l-5 9a2 2 0 002 3h10a2 2 0 002-3l-5-9V3"/>',
+  suppliers:'<path d="M3 7h11v9H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="18" r="1.8"/><circle cx="17" cy="18" r="1.8"/>',
+  contacts:'<path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a1 1 0 01-1 1A16 16 0 014 5a1 1 0 011-1z"/>',
+  staff:'<circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.5 2.7-6 6-6s6 2.5 6 6M16 11a3 3 0 100-6M21 20c0-3-1.8-5.2-4.5-5.8"/>',
+  onboarding:'<path d="M5 4h6a3 3 0 013 3v13a2 2 0 00-2-2H5zM19 4h-5v14h5z"/>',
+  review:'<path d="M12 4l2.5 5.2 5.5.8-4 4 1 5.6L12 17l-5 2.6 1-5.6-4-4 5.5-.8z"/>',
+  setup:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/>',
+  chevD:'<path d="M6 9l6 6 6-6"/>',chevR:'<path d="M9 6l6 6-6 6"/>',chevL:'<path d="M15 6l-6 6 6 6"/>',
+  key:'<circle cx="8" cy="15" r="4"/><path d="M11 12l8-8M16 7l3 3"/>',shield:'<path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9 12l2 2 4-4"/>',
+  out:'<path d="M14 4h4a2 2 0 012 2v12a2 2 0 01-2 2h-4M10 16l-4-4 4-4M6 12h10"/>',
+};
+// Every section, in order. grp: where it lives (diary sections are tabs; records and manage are lists on phones).
+const NAV=[
+  {id:"day",t:"Today",grp:"diary",ic:"today"},{id:"week",t:"This week",grp:"diary",ic:"week"},{id:"history",t:"Last 4 weeks",grp:"manage",ic:"history",sub:"Days complete, gaps and problems"},
+  {id:"extras",t:"Extra checks",grp:"records",ic:"extras",tile:"teal"},{id:"cleaning",t:"Cleaning",grp:"records",ic:"cleaning",tile:"blue"},
+  {id:"prove",t:"Prove it",grp:"records",ic:"prove",tile:"orange"},{id:"allergens",t:"Allergens",grp:"records",ic:"allergens",tile:"red"},
+  {id:"eho",t:"EHO inspection",grp:"manage",ic:"eho",tile:"green"},{id:"plans",t:"HACCP & risk",grp:"manage",ic:"plans",tile:"purple"},
+  {id:"suppliers",t:"Suppliers",grp:"manage",ic:"suppliers",tile:"orange"},{id:"contacts",t:"Contacts",grp:"manage",ic:"contacts",tile:"green"},
+  {id:"staff",t:"Staff training",grp:"manage",ic:"staff",tile:"teal"},{id:"onboarding",t:"Onboarding",grp:"manage",ic:"onboarding",tile:"indigo"},
+  {id:"review",t:"4-weekly review",grp:"manage",ic:"review",tile:"red"},{id:"setup",t:"Setup",grp:"manage",ic:"setup",tile:"grey"},
+];
+const navOf=id=>NAV.find(n=>n.id===id);
+// Sections only managers and admins use. The Worker enforces the same rule on saves (src/access.ts).
+const MANAGER_TABS=new Set(["eho","plans","suppliers","contacts","staff","onboarding","review","setup"]);
+const roleAllows=t=>S.role!=="staff"||!MANAGER_TABS.has(t);
+const canTab=t=>t==="records"||t==="more"||(tabOn(t)&&roleAllows(t));
+const initials=n=>String(n||"?").split(/\s+/).filter(Boolean).map(w=>w[0]).slice(0,2).join("").toUpperCase();
+function siteState(id){
+  const a=siteAttention(id);
+  if(!S.db||!a)return{cls:"",text:"…"};
+  if(a.unused)return{cls:"",text:"Not in use"};
+  return a.count?{cls:"bad",text:`${a.count} to do`}:{cls:"ok",text:"All clear"};
+}
+// Small status shown beside a section in lists ("1 overdue").
+function navBadge(id){
+  if(id==="cleaning"||id==="extras"){const n=S[id].filter(x=>taskState(x).overdue).length;return n?{cls:"bad",text:`${n} overdue`}:null}
+  return null;
+}
 function renderSites(){
-  const box=$("#sites");box.replaceChildren();
+  const st=siteState(S.site);
+  document.querySelectorAll("[data-sitebtn]").forEach(b=>{
+    b.replaceChildren(el("span",{class:"sdot "+st.cls}),el("span",{class:"sname",text:curSite().name}),svgi(ICON.chevD));
+    b.setAttribute("aria-label",`Site: ${curSite().name}. Change site`);
+  });
+  const box=$("#siteList");box.replaceChildren();
   for(const x of SITES){
-    const a=siteAttention(x.id);const sm=S.sum[x.id];
-    box.append(el("button",{class:"site",type:"button","aria-pressed":String(x.id===S.site),onclick:()=>switchSite(x.id)},
-      el("b",{text:x.name}),el("span",{class:"by",text:siteAddr(x.id,sm&&sm.settings)}),
-      S.db?el("span",{class:"pill cnt "+(!a||a.unused?"":a.count?"bad":"ok"),text:!a?"…":a.unused?"Not started":a.count?`${a.count} to action`:"All clear"}):null));
+    const s=siteState(x.id),sm=S.sum[x.id];
+    box.append(el("button",{class:"lrow"+(x.id===S.site?" on":""),type:"button","aria-current":x.id===S.site?"true":null,onclick:()=>{closeSheets();switchSite(x.id)}},
+      el("span",{class:"sdot big "+s.cls}),el("span",{class:"t"},el("b",{text:x.name}),el("span",{class:"s",text:siteAddr(x.id,sm&&sm.settings)})),
+      S.db?el("span",{class:"pill "+s.cls,text:s.text}):null));
   }
 }
+function navRow(n,onclick){
+  const b=navBadge(n.id);
+  return el("button",{class:"lrow",type:"button",onclick},el("span",{class:"tile "+(n.tile||"blue")},svgi(ICON[n.ic])),
+    el("span",{class:"t"},el("b",{text:n.t}),n.sub?el("span",{class:"s",text:n.sub}):null),b?el("span",{class:"pill "+b.cls,text:b.text}):null,el("span",{class:"chev"},svgi(ICON.chevR)));
+}
+function renderNav(){
+  const vis=NAV.filter(n=>canTab(n.id));
+  // sidebar
+  const sn=$("#snav");sn.replaceChildren();
+  const groups=[["diary",""],["records","Records"],["manage","Management"]];
+  for(const[g,label]of groups){
+    const items=vis.filter(n=>n.grp===g||(g==="diary"&&n.id==="history"));
+    if(g==="manage")items.splice(0,items.length,...vis.filter(n=>n.grp==="manage"&&n.id!=="history"));
+    if(!items.length)continue;
+    if(label)sn.append(el("div",{class:"h",text:label}));
+    for(const n of items){const b=navBadge(n.id);
+      sn.append(el("a",{href:"#"+n.id,class:S.tab===n.id?"on":"","aria-current":S.tab===n.id?"page":null,onclick:e=>{e.preventDefault();show(n.id)}},svgi(ICON[n.ic]),el("span",{text:n.t}),b?el("span",{class:"n pill "+b.cls,text:b.text.split(" ")[0]}):null));}
+  }
+  // tab bar
+  const grpOf=t=>t==="records"||(navOf(t)||{}).grp==="records"?"records":t==="more"||(navOf(t)||{}).grp==="manage"?"more":t;
+  const cur=grpOf(S.tab);
+  const recCount=vis.filter(n=>n.grp==="records").reduce((k,n)=>k+(navBadge(n.id)?1:0),0);
+  const tb=$("#tabbar");tb.replaceChildren();
+  for(const[t,label,ic]of[["day","Today","today"],["week","Week","week"],["records","Records","records"],["more","More","more"]]){
+    if(!canTab(t))continue;
+    tb.append(el("button",{type:"button",class:"tab"+(cur===t?" on":""),"aria-current":cur===t?"page":null,onclick:()=>show(t)},svgi(ICON[ic]),el("span",{text:label}),t==="records"&&recCount?el("span",{class:"n",text:String(recCount)}):null));
+  }
+  // Records and More pages
+  const rh=$("#recordsHub");rh.replaceChildren(...vis.filter(n=>n.grp==="records").map(n=>navRow(n,()=>show(n.id))));
+  const mh=$("#moreHub");mh.replaceChildren();
+  const mg=vis.filter(n=>n.grp==="manage");
+  if(mg.length){const hist=mg.filter(n=>n.id==="history"),rest=mg.filter(n=>n.id!=="history");
+    if(hist.length)mh.append(el("div",{class:"list glass"},...hist.map(n=>navRow(n,()=>show(n.id)))));
+    if(rest.length)mh.append(el("div",{class:"label",text:"Management"}),el("div",{class:"list glass"},...rest.map(n=>navRow(n,()=>show(n.id)))));}
+  mh.append(el("div",{class:"label",text:"Account"}),el("div",{class:"list glass"},...accountItems().map(([t,ic,tile,fn,danger])=>
+    el("button",{class:"lrow"+(danger?" danger":""),type:"button",onclick:fn},el("span",{class:"tile "+tile},svgi(ICON[ic])),el("span",{class:"t"},el("b",{text:t}),danger&&S.myName?el("span",{class:"s",text:"Signed in as "+S.myName}):null)))));
+}
+function accountItems(){
+  return[["Change password","key","grey",()=>{location.href="/signin#change"}],
+    ...(S.role==="admin"?[["Admin","shield","blue",()=>{location.href="/admin"}]]:[]),
+    ["Sign out","out","red",signOut,true]];
+}
+async function signOut(){try{await fetch("/api/auth/logout",{method:"POST"})}catch(e){}location.replace("/signin")}
+function renderMe(){
+  $("#avatarBtn").textContent=initials(S.myName);
+  $("#meBox").replaceChildren(el("span",{class:"avatar sm",text:initials(S.myName)}),
+    el("span",{class:"t"},el("b",{text:S.myName||"Signed in"}),el("span",{class:"s",text:{admin:"Admin",manager:"Manager",staff:"Staff"}[S.role]||""})),svgi(ICON.chevR));
+}
+/* sheets and the account menu */
+function closeSheets(){$("#sheetVeil").hidden=true;$("#siteSheet").hidden=true;$("#acctMenu").hidden=true}
+function openSiteSheet(){renderSites();$("#sheetVeil").hidden=false;$("#siteSheet").hidden=false;const on=$("#siteList .on")||$("#siteList button");if(on)on.focus()}
+function openAcctMenu(anchor){
+  const m=$("#acctMenu");
+  m.replaceChildren(el("div",{class:"who"},el("b",{text:S.myName||""}),el("span",{class:"s",text:{admin:"Admin",manager:"Manager",staff:"Staff"}[S.role]||""})),
+    ...accountItems().map(([t,ic,,fn,danger])=>el("button",{class:"m"+(danger?" danger":""),type:"button",role:"menuitem",onclick:()=>{closeSheets();fn()}},svgi(ICON[ic]),el("span",{text:t}))));
+  const r=anchor.getBoundingClientRect();
+  m.style.top=(r.bottom+8)+"px";m.style.left=Math.max(12,Math.min(r.left,innerWidth-272))+"px";
+  if(anchor.id==="meBox"){m.style.top="";m.style.bottom=(innerHeight-r.top+8)+"px"}else m.style.bottom="";
+  $("#sheetVeil").hidden=false;m.hidden=false;m.querySelector("button").focus();
+}
+document.querySelectorAll("[data-sitebtn]").forEach(b=>b.addEventListener("click",openSiteSheet));
+$("#avatarBtn").addEventListener("click",e=>openAcctMenu(e.currentTarget));
+$("#meBox").addEventListener("click",e=>openAcctMenu(e.currentTarget));
+$("#sheetVeil").addEventListener("click",closeSheets);
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("#sheetVeil").hidden)closeSheets()});
 
 /* ---------- setup (per site) & publishing ---------- */
 let SE=null,setupDirty=false;
@@ -1900,23 +2022,35 @@ $("#pubGo").addEventListener("click",async()=>{
   }catch(e){fail(e);pubNote="Publishing stopped part-way. Check each site's setup, then try again.";renderPublish()}
 });
 
-function renderAll(){renderSites();renderAttention();renderDay();renderWeek();renderHistory();renderTasks("extras");renderTasks("cleaning");renderProve();renderAllergenDocs();renderAllergens();renderPlansList();renderSuppliers();renderContacts();renderStaff();renderOnbList();renderInspList();renderReview();renderSetup()}
+function renderAll(){renderSites();renderNav();renderHead();renderAttention();renderDay();renderWeek();renderHistory();renderTasks("extras");renderTasks("cleaning");renderProve();renderAllergenDocs();renderAllergens();renderPlansList();renderSuppliers();renderContacts();renderStaff();renderOnbList();renderInspList();renderReview();renderSetup()}
 
 /* ---------- tabs ---------- */
-const TABS=["day","week","history","extras","cleaning","prove","allergens","eho","plans","suppliers","contacts","staff","onboarding","review","setup"];
-function show(tab){
-  if(!TABS.includes(tab)||!tabOn(tab))tab="day";
+const TABS=["day","week","history","extras","cleaning","prove","allergens","eho","plans","suppliers","contacts","staff","onboarding","review","setup","records","more"];
+function show(tab,opts){
+  if(!TABS.includes(tab))tab="day";
+  if(!canTab(tab)){if(S.role==="staff"&&MANAGER_TABS.has(tab)&&!(opts&&opts.quiet))toast("That section is for managers.");tab="day"}
+  const changed=S.tab!==tab;
   S.tab=tab;
-  document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.tab===tab)));
   document.querySelectorAll("[data-panel]").forEach(p=>p.hidden=p.dataset.panel!==tab);
+  $("#attention").hidden=tab!=="day"||!S.db;
+  renderHead();renderNav();
+  if(changed&&!(opts&&opts.keepScroll))window.scrollTo({top:0});
   try{localStorage.setItem("sfbb.tab",tab)}catch(e){}
 }
-function applyTabs(){
-  document.querySelectorAll("nav.tabs button").forEach(b=>b.hidden=!tabOn(b.dataset.tab));
-  if(S.tab&&!tabOn(S.tab))show("day");
+// The large title, its subtitle and (on phones) a back link to Records or More.
+function renderHead(){
+  const t=S.tab,n=navOf(t);
+  const title=t==="records"?"Records":t==="more"?"More":t==="day"?(S.date===today()?"Today":"Diary"):t==="week"?"This week":n?n.t:"";
+  const sub=t==="day"?parse(S.date).toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long"}):curSite().name;
+  $("#pageTitle").textContent=title;$("#pageSub").textContent=sub;
+  const back=n&&n.grp==="records"?["records","Records"]:n&&n.grp==="manage"?["more","More"]:null;
+  const bb=$("#backBtn");bb.hidden=!back;
+  if(back){bb.replaceChildren(svgi(ICON.chevL),el("span",{text:back[1]}));bb.onclick=()=>show(back[0])}
+  document.title=(title?title+" · ":"")+"Kitchen Diary";
 }
-document.querySelectorAll("nav.tabs button").forEach(b=>b.addEventListener("click",()=>show(b.dataset.tab)));
-show((()=>{const h=location.hash.slice(1);if(TABS.includes(h))return h;try{const t=localStorage.getItem("sfbb.tab");return TABS.includes(t)?t:"day"}catch(e){return"day"}})());
+function applyTabs(){if(S.tab&&!canTab(S.tab))show("day",{quiet:true});else renderNav()}
+window.addEventListener("hashchange",()=>{const h=location.hash.slice(1);if(TABS.includes(h))show(h)});
+show((()=>{const h=location.hash.slice(1);if(TABS.includes(h))return h;try{const t=localStorage.getItem("sfbb.tab");return TABS.includes(t)?t:"day"}catch(e){return"day"}})(),{quiet:true});
 
 /* ---------- site switching & subscriptions ---------- */
 function switchSite(id){
@@ -1962,7 +2096,7 @@ function subscribeSite(){
 }
 function subscribeSummaries(){
   const err=()=>{};
-  const upd=()=>{renderSites();renderAttention();renderPublish()};
+  const upd=()=>{renderSites();renderNav();renderAttention();renderPublish()};
   for(const x of SITES){
     const sm=S.sum[x.id]={settings:normSettings(null),days:{},extras:[],cleaning:[],got:{}};
     const mark=k=>{sm.got[k]=true;sm.ready=["settings","days","extras","cleaning"].every(n=>sm.got[n]);upd()};
@@ -1974,8 +2108,8 @@ function subscribeSummaries(){
 }
 
 /* ---------- events ---------- */
-$("#dayDate").addEventListener("change",e=>{if(e.target.value){S.date=e.target.value;renderDay()}});
-$("#todayBtn").addEventListener("click",()=>{S.date=today();renderDay()});
+$("#dayDate").addEventListener("change",e=>{if(e.target.value){S.date=e.target.value;renderDay();renderHead()}});
+$("#todayBtn").addEventListener("click",()=>{S.date=today();renderDay();renderHead()});
 $("#saveProb").addEventListener("click",async()=>{await patchDay(S.date,{problems:{text:$("#problems").value.trim(),...stamp()}});toast("Note saved")});
 $("#wkPrev").addEventListener("click",()=>{S.week=addDays(S.week,-7);renderWeek()});
 $("#wkNext").addEventListener("click",()=>{S.week=addDays(S.week,7);renderWeek()});
@@ -2005,7 +2139,8 @@ applyTabs();renderAll();
   if(S.user){
     const me=await S.user.me();S.me=me.id;
     const w=await S.user.can("data.write");if(w===false){S.canWrite=false;$("#readonly").hidden=false}
-    $("#who").replaceChildren(el("img",{src:me.avatarUrl,alt:"",width:24,height:24,style:"border-radius:50%"}),el("span",{class:"by",text:me.name?"Recording as "+me.name:"Recording as you"}));
+    S.myName=me.name||"";S.role=me.role||"staff";renderMe();
+    if(!canTab(S.tab))show("day");else renderNav();
   }
   subscribeSummaries();
   subscribeSite();

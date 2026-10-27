@@ -140,6 +140,7 @@
   /* ---------- start ---------- */
 
   fetch("/api/auth/me").then((r) => r.json()).then(({ user, setupNeeded }) => {
+    if (user && location.hash === "#change") { show("change"); return; } // from the diary's account menu
     if (user) { location.replace(next); return; }
     show(setupNeeded ? "setup" : "signin");
   }).catch(() => {
