@@ -370,7 +370,7 @@ function renderDayInner(){
   // sign off
   const sc=$("#signCard");sc.replaceChildren();
   const missing=steps.slice(0,3).filter(x=>!x[1]).map(x=>x[0].toLowerCase().replace("temps","temperatures")+(x[0]==="Temps"?"":" checks"));
-  const sign=()=>patchDay(S.date,{signed:{...stamp(),name:S.myName}});
+  const sign=()=>{patchDay(S.date,{signed:{...stamp(),name:S.myName}});toast(`Day signed off by ${S.myName||"you"}`)}; // also replaces any Undo still showing
   if(d.signed){
     ids.push(d.signed.by);
     const who=d.signed.name||nameOf(d.signed.by),on=d.signed.at&&iso(new Date(d.signed.at))!==S.date?" on "+short(iso(new Date(d.signed.at))):"";
@@ -426,7 +426,7 @@ function renderWeek(){
   $("#wkNoteBy").textContent=w.notes&&w.notes.at?`Saved ${when(w.notes.at)} by ${nameOf(w.notes.by)}`:"";
   secCard($("#wkNoteCard"),"wknotes",true,badgeEl("acc","pen"),"Notes for the week",ntx?ntx.split("\n")[0]+(w.notes.by?` · ${nameOf(w.notes.by)}`:""):"Optional · pests, maintenance, anything to follow up");
   const sc=$("#wkSignCard");sc.replaceChildren();
-  const sign=()=>patchWeek(wk,{signed:{...stamp(),name:S.myName}});
+  const sign=()=>{patchWeek(wk,{signed:{...stamp(),name:S.myName}});toast(`Week signed off by ${S.myName||"you"}`)};
   if(w.signed){
     sc.className="scard glass signcard done";
     sc.append(el("span",{class:"big"},svgi(ICON.check)),el("h2",{text:"Week signed off"}),el("span",{class:"s",text:`By ${w.signed.name||nameOf(w.signed.by)} on ${when(w.signed.at)}`}),

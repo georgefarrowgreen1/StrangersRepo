@@ -397,3 +397,6 @@ section.panel.onlywide{display:none}
 .xrow.open .xmain .t .s{display:block}
 button.step{border:0;background:none;padding:4px 0;margin:-4px 0;font:inherit;font-size:12px;font-weight:600;color:var(--muted);text-align:left;cursor:pointer;border-radius:8px}
 button.step.on{color:var(--ok)} button.step.now{color:var(--accent)}
+/* When the sign-off button floats above the tab bar, the toast sits above it. */
+body.hasfab .toast{bottom:calc(env(safe-area-inset-bottom,0px) + 160px)}
+@media (min-width:1024px){body.hasfab .toast{bottom:92px}}
