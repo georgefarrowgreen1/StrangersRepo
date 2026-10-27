@@ -72,7 +72,7 @@ function toast(m){const t=$("#toast");t.textContent=m;t.hidden=false;clearTimeou
 
 const S={site:(()=>{try{const s=localStorage.getItem("sfbb.site");return SITES.some(x=>x.id===s)?s:"roastery"}catch(e){return"roastery"}})(),
   cfg:null,sum:{},subs:[],allergenDocs:[],assets:null,shared:null,
-  db:null,user:null,me:null,canWrite:true,settings:DEFAULT_SETTINGS,days:{},weeks:{},allergens:[],reviews:[],extras:[],cleaning:[],suppliers:[],contacts:[],plans:[],plan:null,onboarding:[],onb:null,inspections:[],insp:null,sample:undefined,staff:[],prove:[],
+  db:null,user:null,me:null,canWrite:true,settings:DEFAULT_SETTINGS,days:{},weeks:{},allergens:[],reviews:[],extras:[],cleaning:[],suppliers:[],contacts:[],plans:[],plan:null,onboarding:[],onb:null,inspections:[],insp:null,staff:[],prove:[],
   date:today(),week:monday(today()),editAlg:null,editStaff:null,names:{},rev:{}};
 S.role="";S.myName="";
 const ro=()=>!S.canWrite||!S.db;
@@ -627,182 +627,8 @@ function reviewState(d){
   if(left<=14)return{cls:"warn",text:"Review due "+short(d.reviewDate),overdue:false};
   return{cls:"ok",text:"Review "+short(d.reviewDate),overdue:false};
 }
-function isoDate(v,left){
-  v=v==null?"":String(v).trim();if(!v)return"";
-  if(/^\d{4}-\d{2}-\d{2}$/.test(v))return v;
-  const m=v.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2}|\d{4})$/);
-  if(m){const y=m[3].length===2?2000+Number(m[3]):Number(m[3]);const d=new Date(y,Number(m[2])-1,Number(m[1]));if(!isNaN(d))return iso(d)}
-  const t=Date.parse(v);if(!isNaN(t)&&/\d{4}/.test(v))return iso(new Date(t));
-  left.push(v);return"";
-}
-function normalizePlan(raw,kind,fname,cut){
-  raw=raw&&typeof raw==="object"&&!Array.isArray(raw)?raw:{};
-  const k=kind!=="auto"?kind:(raw.type==="risk"?"risk":"haccp");
-  const str=v=>v==null?"":String(v).trim();const left=[];
-  const d={type:k,title:str(raw.title)||PL_NAME[k]};
-  for(const[f,,t]of PL_META[k])d[f]=t==="date"?isoDate(raw[f],left):str(raw[f]);
-  const src=Array.isArray(raw[rowsKey(k)])?raw[rowsKey(k)]:Array.isArray(raw.rows)?raw.rows:Array.isArray(raw.steps)?raw.steps:[];
-  d[rowsKey(k)]=src.filter(r=>r&&typeof r==="object").map(r=>{
-    const b=blankRow(k);
-    for(const f of Object.keys(b)){
-      if(typeof b[f]==="boolean")b[f]=r[f]===true||r[f]==="true"||r[f]==="Yes"||r[f]==="yes";
-      else if(typeof b[f]==="number"){const n=Math.round(Number(r[f]));b[f]=isFinite(n)?Math.max(0,Math.min(5,n)):0}
-      else if(f==="dueDate")b[f]=isoDate(r[f],left);
-      else if(f==="hazardType"){const h=str(r[f]);b[f]=HAZ_TYPES.find(x=>x&&x.toLowerCase()===h.toLowerCase())||""}
-      else b[f]=str(r[f]);
-    }
-    return b;
-  });
-  const extra=[str(raw.notes)];
-  if(left.length)extra.push("Dates as written in the original: "+left.join("; "));
-  if(cut)extra.push("Only the first part of the original was converted because it was very long. Check the rest by hand.");
-  d.notes=extra.filter(Boolean).join("\n\n");
-  const now=Date.now();
-  Object.assign(d,{source:fname,createdBy:S.me,createdAt:now,updatedBy:S.me,updatedAt:now,history:[{by:S.me,at:now,what:"Converted from "+fname}]});
-  return d;
-}
 
 /* extraction */
-const LIBS={
-  pdf:["https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js","https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"],
-  docx:["https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"],
-  xlsx:["https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"]};
-const loadedScripts={};
-function loadScript(src){
-  return loadedScripts[src]||(loadedScripts[src]=new Promise((res,rej)=>{
-    const s=document.createElement("script");s.src=src;s.onload=res;
-    s.onerror=()=>{delete loadedScripts[src];rej(new Error("Couldn't load the file reader. Check your connection and try again."))};
-    document.head.append(s);
-  }));
-}
-async function loadLib(k){for(const s of LIBS[k])await loadScript(s)}
-function htmlToText(html){
-  const doc=new DOMParser().parseFromString(html,"text/html");
-  const cell=c=>c.textContent.replace(/\s+/g," ").trim();
-  const walk=n=>{
-    if(n.nodeType===3)return n.textContent;
-    if(n.nodeType!==1)return"";
-    const t=n.tagName;
-    if(t==="TABLE")return"\n"+[...n.querySelectorAll("tr")].map(tr=>"| "+[...tr.children].map(cell).join(" | ")+" |").join("\n")+"\n\n";
-    const inner=[...n.childNodes].map(walk).join("");
-    if(/^H[1-6]$/.test(t))return"\n## "+inner.trim()+"\n";
-    if(t==="LI")return"- "+inner.trim()+"\n";
-    if(t==="P"||t==="DIV")return inner.trim()+"\n";
-    if(t==="BR")return"\n";
-    return inner;
-  };
-  return walk(doc.body).replace(/\n{3,}/g,"\n\n").trim();
-}
-async function extractFile(file,maxImgs){
-  const name=file.name.toLowerCase(),ext=name.split(".").pop();
-  if(/^image\//.test(file.type)||["jpg","jpeg","png","webp","gif"].includes(ext))return{images:[file]};
-  if(ext==="doc")throw new Error("Older Word .doc files can't be read here. Open it in Word, save it as .docx or PDF, then upload that.");
-  if(ext==="pdf"){
-    await loadLib("pdf");const lib=window.pdfjsLib;
-    lib.GlobalWorkerOptions.workerSrc=LIBS.pdf[1];
-    const pdf=await lib.getDocument({data:new Uint8Array(await file.arrayBuffer()),isEvalSupported:false}).promise;
-    let text="";
-    for(let i=1;i<=pdf.numPages;i++){
-      const tc=await(await pdf.getPage(i)).getTextContent();
-      text+=tc.items.map(it=>(it.str||"")+(it.hasEOL?"\n":" ")).join("")+`\n\n[end of page ${i}]\n\n`;
-    }
-    if(text.replace(/\[end of page \d+\]|\s/g,"").length>=60*Math.min(pdf.numPages,3))return{text};
-    if(!maxImgs)throw new Error("This PDF looks like a scan with no selectable text, and photos can't be converted in this view. Upload a Word or text version instead.");
-    const images=[];
-    for(let i=1;i<=Math.min(pdf.numPages,maxImgs);i++){
-      const page=await pdf.getPage(i);const base=page.getViewport({scale:1});
-      const vp=page.getViewport({scale:Math.min(2.5,1600/base.width)});
-      const c=document.createElement("canvas");c.width=Math.ceil(vp.width);c.height=Math.ceil(vp.height);
-      await page.render({canvasContext:c.getContext("2d"),viewport:vp}).promise;
-      images.push(await new Promise(r=>c.toBlob(r,"image/jpeg",0.85)));
-    }
-    return{images,pagesSkipped:Math.max(0,pdf.numPages-maxImgs)};
-  }
-  if(ext==="docx"){
-    await loadLib("docx");
-    const r=await window.mammoth.convertToHtml({arrayBuffer:await file.arrayBuffer()},{convertImage:window.mammoth.images.imgElement(()=>Promise.resolve({src:""}))});
-    return{text:htmlToText(r.value)};
-  }
-  if(ext==="xlsx"||ext==="xls"){
-    await loadLib("xlsx");
-    const wb=window.XLSX.read(await file.arrayBuffer(),{type:"array"});
-    return{text:wb.SheetNames.map(n=>"## Sheet: "+n+"\n"+window.XLSX.utils.sheet_to_csv(wb.Sheets[n],{blankrows:false})).join("\n\n")};
-  }
-  if(["csv","txt","md","text"].includes(ext)||/^text\//.test(file.type))return{text:await file.text()};
-  throw new Error("That file type can't be read. Upload a PDF, Word (.docx), Excel, text file or a photo.");
-}
-const SHAPES={
-  haccp:`{"type":"haccp","title":"string","scope":"products and processes covered","preparedBy":"string","date":"YYYY-MM-DD or as written","reviewDate":"YYYY-MM-DD or as written","steps":[{"step":"process step","hazard":"the hazard","hazardType":"Biological | Chemical | Physical | Allergen | empty string","control":"control measure","ccp":false,"criticalLimit":"string","monitoring":"what is checked, how, when, by whom","correctiveAction":"string","verification":"string","records":"string"}],"notes":"string"}`,
-  risk:`{"type":"risk","title":"string","area":"area or activity assessed","assessor":"string","date":"YYYY-MM-DD or as written","reviewDate":"YYYY-MM-DD or as written","rows":[{"hazard":"string","whoHarmed":"who might be harmed and how","existingControls":"string","likelihood":0,"severity":0,"furtherAction":"string","actionBy":"string","dueDate":"YYYY-MM-DD or empty string","done":false}],"notes":"string"}`};
-function buildPrompt(kind,fname,text,nImg){
-  const which=kind==="auto"
-    ?`First decide whether the document is a HACCP plan (process steps, hazards, critical control points, critical limits, monitoring) or a risk assessment (hazards, who might be harmed, risk ratings, controls, actions; for example food safety, fire, COSHH or health and safety). Then reply in the matching shape.\n\nHACCP plan shape:\n${SHAPES.haccp}\n\nRisk assessment shape:\n${SHAPES.risk}`
-    :`It is a ${PL_NAME[kind].toLowerCase()}. Reply in this shape:\n${SHAPES[kind]}`;
-  return `Convert this document from a UK café's food safety records (Safer Food, Better Business) into structured JSON so it can be shown as an editable table.
-
-Rules:
-- Use only what the document says. Do not invent hazards, limits, controls, ratings or dates.
-- Keep the document's own wording. Fix only obvious typos and capitalisation.
-- Use "" for anything the document doesn't give. Use false for ccp and done, and 0 for likelihood and severity, when not stated.
-- HACCP plans: one entry in "steps" per hazard at a step; repeat the step name when a step has several hazards. Set ccp to true only where the document marks a critical control point (CCP).
-- Risk ratings use a 1 to 5 scale. If the document uses another scale, convert it (for low/medium/high use 1/3/5) and say so in notes.
-- Put anything that doesn't fit the table (sign-offs, general procedures, scope notes) in "notes" as short plain text.
-- Write dates as YYYY-MM-DD when a full date is given.
-
-${which}
-
-Reply with only the JSON object.
-
-File name: ${fname}
-${nImg?`The document is in the ${nImg} attached image${nImg>1?"s":""}, in page order.`:`Document text:\n"""\n${text}\n"""`}`;
-}
-function sampleErr(e){
-  const c=e&&e.code;
-  if(c==="cancelled")return"Stopped.";
-  if(["not_granted","sampling_disabled","not_declared","capability_disabled","capability_removed"].includes(c)){S.sample=null;renderPlansList();renderOnbList();renderInspList();return"Claude isn't available to this page, so files can't be converted. You can still start from a template."}
-  if(c==="rate_limited")return"Too many requests, or your Claude usage limit has been reached. Try again later.";
-  if(c==="prompt_too_large")return"That document is too long to convert in one go. Upload just the HACCP or risk assessment pages.";
-  if(c==="image_rejected"||c==="images_unavailable")return"That image couldn't be read. Try a clearer JPEG or PNG photo, or a PDF.";
-  if(c==="session_expired")return"Sign in to Claude again, then try again.";
-  if(c==="invalid_json"||c==="empty_completion"||c==="refused")return"Claude couldn't turn that into a table. Try again, or choose the document type yourself.";
-  return"Something went wrong while converting. Try again.";
-}
-let plFile=null,plCtl=null;
-function plStatus(t){$("#plStatus").textContent=t}
-function setPlFile(f){
-  plFile=f||null;
-  $("#plDropText").textContent=plFile?plFile.name:"Drop a file here, or choose one";
-  $("#plConvert").disabled=!plFile||!S.sample;plStatus("");
-}
-async function convertPlan(){
-  if(!plFile||!S.sample||ro())return;
-  if(plFile.size>25*1024*1024){plStatus("That file is over 25 MB. Upload a smaller version.");return}
-  const file=plFile,kind=$("#plKind").value,site=S.site;
-  $("#plConvert").disabled=true;plStatus("Reading the file…");
-  const done=()=>{$("#plStop").hidden=true;$("#plConvert").disabled=!plFile;plCtl=null};
-  const lim=await S.sample.limits().catch(()=>null);
-  const maxImgs=lim&&lim.images?Math.min(lim.images.maxCount,10):0;
-  let ex;
-  try{ex=await extractFile(file,maxImgs)}catch(e){plStatus((e&&e.message)||"Couldn't read that file.");done();return}
-  if(ex.images&&!maxImgs){plStatus("Photos can't be converted in this view. Upload a PDF with selectable text, or a Word or Excel file.");done();return}
-  let text=ex.text||"",cut=false;
-  if(!ex.images&&text.replace(/\s/g,"").length<20){plStatus("No text found in that file.");done();return}
-  if(text.length>150000){text=text.slice(0,150000);cut=true}
-  plCtl=new AbortController();$("#plStop").hidden=false;
-  plStatus("Claude is formatting the document. This can take a minute or two…");
-  const opts={signal:plCtl.signal,modelTier:"default",onText:({text:t})=>plStatus(`Claude is writing the table… ${t.length.toLocaleString("en-GB")} characters`)};
-  if(ex.images)opts.images=ex.images;
-  let raw;
-  try{raw=await S.sample.json(buildPrompt(kind,file.name,text,ex.images?ex.images.length:0),opts)}
-  catch(e){plStatus(sampleErr(e));done();return}
-  const doc=normalizePlan(raw,kind,file.name,cut||!!ex.pagesSkipped);
-  if(!doc[rowsKey(doc.type)].length&&!doc.notes){plStatus("Claude couldn't find a HACCP table or risk assessment in that file. Choose the type yourself and try again, or start from a template.");done();return}
-  try{
-    const ref=await C("plans",site).add(doc);
-    plStatus("");setPlFile(null);$("#plFile").value="";done();
-    if(site===S.site){openPlan(ref.id,doc);toast("Converted. Check it over, then save any changes.")}else toast(`Converted and saved to ${siteOf(site).name}.`);
-  }catch(e){fail(e);plStatus("Couldn't save the converted document.");done()}
-}
 async function newPlan(k){
   if(ro())return;
   const now=Date.now();
@@ -832,8 +658,6 @@ function renderPlansList(){
       el("span",{class:"pill "+rs.cls,text:rs.text})));
   }
   $("#plNewRow").hidden=ro();
-  $("#plUploadPanel").hidden=ro()||!S.sample;
-  $("#plConvert").disabled=!plFile||!S.sample;
   resolveNames(ids);
 }
 function openPlan(id,data){
@@ -965,13 +789,6 @@ function onPlansSnapshot(){
     else{P.remote=true;updateSaveBar()}
   }
 }
-$("#plFile").addEventListener("change",e=>setPlFile(e.target.files[0]));
-const drop=$("#plDrop");
-["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("over")}));
-["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("over")}));
-drop.addEventListener("drop",e=>{const f=e.dataTransfer&&e.dataTransfer.files[0];if(f)setPlFile(f)});
-$("#plConvert").addEventListener("click",convertPlan);
-$("#plStop").addEventListener("click",()=>plCtl&&plCtl.abort());
 $("#plNewHaccp").addEventListener("click",()=>newPlan("haccp"));
 $("#plNewRisk").addEventListener("click",()=>newPlan("risk"));
 window.addEventListener("beforeunload",e=>{if(S.plan&&S.plan.dirty){e.preventDefault();e.returnValue=""}});
@@ -982,47 +799,7 @@ const EHO_PRI=[["must","Must do","bad"],["should","Should do","warn"],["advice",
 const priOf=k=>EHO_PRI.find(p=>p[0]===k)||EHO_PRI[1];
 const ratingCls=r=>r==null||r===""?"":r>=4?"ok":r===3?"warn":"bad";
 const longDate=s=>s?parse(s).toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"}):"";
-const EHO_SHAPE=`{"inspectionDate":"YYYY-MM-DD or as written","inspector":"officer's name","authority":"council or local authority","visitType":"e.g. Routine inspection, Revisit, Complaint","rating":5,"scores":{"hygiene":"hygienic food handling score as written","structure":"cleanliness and condition of facilities and building score as written","management":"management of food safety / confidence in management score as written"},"revisitDate":"YYYY-MM-DD, as written, or empty","summary":"two or three sentences in plain English on the overall outcome","goodPoints":["things the inspector said were good"],"issues":[{"issue":"what the inspector found, in the report's words","area":"one of: ${EHO_AREAS.join(" | ")}","priority":"must | should | advice","action":"what needs doing to put it right, as the report says","deadline":"YYYY-MM-DD, as written, or empty","ref":"legal reference if given, else empty"}],"notes":"string"}`;
-function ehoPrompt(fname,text,nImg){
-  return `Read this food hygiene inspection report from a UK local authority Environmental Health Officer (EHO) for a café, and turn it into structured JSON so the café can track and tick off every issue raised.
-
-Rules:
-- Use only what the report says. Do not invent issues, ratings, scores or dates.
-- "issues" must include every contravention, required action, recommendation and piece of advice in the report, one entry each, in the order they appear. Keep the report's wording, tidied into short clear sentences.
-- priority: "must" for legal contraventions or anything the business is required to do; "should" for recommendations or good practice; "advice" for general advice or information.
-- rating is the Food Hygiene Rating (0 to 5) as a number, or null if the report doesn't give one.
-- Use "" for anything not given. Write dates as YYYY-MM-DD when a full date is given.
-- Put anything else useful (e.g. date the rating will be published, appeal or right-to-reply deadlines, request-a-revisit details) in "notes".
-
-Reply with only a JSON object in this shape:
-${EHO_SHAPE}
-
-File name: ${fname}
-${nImg?`The report is in the ${nImg} attached image${nImg>1?"s":""}, in page order.`:`Report text:\n"""\n${text}\n"""`}`;
-}
 const newIssueId=()=>"i"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-function normalizeInsp(raw,fname,cut){
-  raw=raw&&typeof raw==="object"&&!Array.isArray(raw)?raw:{};
-  const str=v=>v==null?"":String(v).trim();const left=[];
-  const r=raw.rating===null||raw.rating===""||raw.rating===undefined?null:Math.round(Number(raw.rating));
-  const sc=raw.scores&&typeof raw.scores==="object"?raw.scores:{};
-  const d={inspectionDate:isoDate(raw.inspectionDate,left),inspector:str(raw.inspector),authority:str(raw.authority),visitType:str(raw.visitType),
-    rating:isFinite(r)&&r>=0&&r<=5?r:null,scores:{hygiene:str(sc.hygiene),structure:str(sc.structure),management:str(sc.management)},
-    revisitDate:isoDate(raw.revisitDate,left),summary:str(raw.summary),
-    goodPoints:(Array.isArray(raw.goodPoints)?raw.goodPoints:[]).map(str).filter(Boolean)};
-  d.issues=(Array.isArray(raw.issues)?raw.issues:[]).filter(i=>i&&typeof i==="object"&&(i.issue||i.action)).map(i=>{
-    const p=str(i.priority).toLowerCase();
-    return{id:newIssueId(),issue:str(i.issue),area:EHO_AREAS.find(a=>a.toLowerCase()===str(i.area).toLowerCase())||"Other",
-      priority:p.startsWith("must")?"must":p.startsWith("adv")?"advice":"should",action:str(i.action),deadline:isoDate(i.deadline,left),ref:str(i.ref),done:false,doneBy:null,doneAt:null,fixNote:""};
-  });
-  const extra=[str(raw.notes)];
-  if(left.length)extra.push("Dates as written in the report: "+left.join("; "));
-  if(cut)extra.push("Only the first part of the report was read because it was very long. Check the rest by hand.");
-  d.notes=extra.filter(Boolean).join("\n\n");
-  const now=Date.now();
-  Object.assign(d,{source:fname,createdBy:S.me,createdAt:now,updatedBy:S.me,updatedAt:now,history:[{by:S.me,at:now,what:"Read from "+fname}]});
-  return d;
-}
 const inspSorted=()=>[...S.inspections].sort((a,b)=>(b.inspectionDate||"").localeCompare(a.inspectionDate||"")||(b.createdAt||0)-(a.createdAt||0));
 function deadlineState(i){
   if(i.done||!i.deadline)return null;
@@ -1030,39 +807,6 @@ function deadlineState(i){
   if(left<0)return{cls:"bad",text:"Overdue since "+short(i.deadline)};
   if(left<=7)return{cls:"warn",text:"Due "+short(i.deadline)};
   return{cls:"",text:"Due "+short(i.deadline)};
-}
-let ehoFile=null,ehoCtl=null;
-function ehoStatus(t){$("#ehoStatus").textContent=t}
-function setEhoFile(f){ehoFile=f||null;$("#ehoDropText").textContent=ehoFile?ehoFile.name:"Drop a file here, or choose one";$("#ehoConvert").disabled=!ehoFile||!S.sample;ehoStatus("")}
-async function convertEho(){
-  if(!ehoFile||!S.sample||ro())return;
-  if(ehoFile.size>25*1024*1024){ehoStatus("That file is over 25 MB. Upload a smaller version.");return}
-  const file=ehoFile,site=S.site;
-  $("#ehoConvert").disabled=true;ehoStatus("Reading the file…");
-  const done=()=>{$("#ehoStop").hidden=true;$("#ehoConvert").disabled=!ehoFile;ehoCtl=null};
-  const lim=await S.sample.limits().catch(()=>null);
-  const maxImgs=lim&&lim.images?Math.min(lim.images.maxCount,10):0;
-  let ex;
-  try{ex=await extractFile(file,maxImgs)}catch(e){ehoStatus((e&&e.message)||"Couldn't read that file.");done();return}
-  if(ex.images&&!maxImgs){ehoStatus("Photos can't be read in this view. Upload a PDF with selectable text, or a Word file.");done();return}
-  let text=ex.text||"",cut=false;
-  if(!ex.images&&text.replace(/\s/g,"").length<20){ehoStatus("No text found in that file.");done();return}
-  if(text.length>120000){text=text.slice(0,120000);cut=true}
-  ehoCtl=new AbortController();$("#ehoStop").hidden=false;
-  ehoStatus("Claude is reading the report. This can take a minute or two…");
-  const opts={signal:ehoCtl.signal,modelTier:"default",onText:({text:t})=>ehoStatus(`Claude is listing the issues… ${t.length.toLocaleString("en-GB")} characters`)};
-  if(ex.images)opts.images=ex.images;
-  let raw;
-  try{raw=await S.sample.json(ehoPrompt(file.name,text,ex.images?ex.images.length:0),opts)}
-  catch(e){ehoStatus(sampleErr(e));done();return}
-  const doc=normalizeInsp(raw,file.name,cut||!!ex.pagesSkipped);
-  if(!doc.inspectionDate&&!doc.issues.length&&doc.rating==null){ehoStatus("That doesn't look like an inspection report. Try another file, or enter it by hand.");done();return}
-  try{
-    await C("inspections",site).add(doc);
-    ehoStatus("");setEhoFile(null);$("#ehoFile").value="";done();
-    toast(doc.issues.length?`Found ${doc.issues.length} issue${doc.issues.length===1?"":"s"} to address`:"Report read. No issues found.");
-    if(!doc.inspectionDate)toast("Couldn't find the inspection date. Tap Edit to add it.");
-  }catch(e){fail(e);ehoStatus("Couldn't save the inspection.");done()}
 }
 async function tickIssue(inspId,issueId,patch){
   if(ro())return;
@@ -1155,8 +899,6 @@ function renderInspList(){
       el("span",{class:"pill "+ratingCls(d.rating),text:d.rating==null?"No rating":"Rated "+d.rating})));
   }
   $("#ehoUploadPanel").hidden=R;
-  $("#ehoConvert").disabled=!ehoFile||!S.sample;
-  $("#ehoConvert").hidden=!S.sample;$("#ehoDrop").hidden=!S.sample;
 }
 function openInsp(id,data){
   const p=data||S.inspections.find(x=>x.id===id);if(!p)return;
@@ -1250,53 +992,12 @@ async function manualInsp(){
     issues:[],notes:"",source:"",createdBy:S.me,createdAt:now,updatedBy:S.me,updatedAt:now,history:[{by:S.me,at:now,what:"Entered by hand"}]};
   try{const ref=await C("inspections").add(d);openInsp(ref.id,{...d,id:ref.id})}catch(e){fail(e)}
 }
-$("#ehoFile").addEventListener("change",e=>setEhoFile(e.target.files[0]));
-const ehoDrop=$("#ehoDrop");
-["dragenter","dragover"].forEach(ev=>ehoDrop.addEventListener(ev,e=>{e.preventDefault();ehoDrop.classList.add("over")}));
-["dragleave","drop"].forEach(ev=>ehoDrop.addEventListener(ev,e=>{e.preventDefault();ehoDrop.classList.remove("over")}));
-ehoDrop.addEventListener("drop",e=>{const f=e.dataTransfer&&e.dataTransfer.files[0];if(f)setEhoFile(f)});
-$("#ehoConvert").addEventListener("click",convertEho);
-$("#ehoStop").addEventListener("click",()=>ehoCtl&&ehoCtl.abort());
 $("#ehoManual").addEventListener("click",manualInsp);
 window.addEventListener("beforeunload",e=>{if(S.insp&&S.insp.dirty){e.preventDefault();e.returnValue=""}});
 
 /* ---------- onboarding documents ---------- */
 const ONB_CATS=["Induction checklist","Staff handbook","Policy","Procedure","Job description","Training guide","Form or template","Other"];
 const ONB_META=[["category","Type","cat"],["audience","Who it's for","text"],["owner","Owner","text"],["date","Dated","date"],["reviewDate","Next review","date"]];
-const ONB_SHAPE=`{"category":"one of: ${ONB_CATS.join(" | ")}","title":"string","audience":"who it is for, e.g. All staff, Baristas, Kitchen team","owner":"person responsible, if stated","date":"YYYY-MM-DD or as written","reviewDate":"YYYY-MM-DD or as written","summary":"one or two sentences on what the document covers","sections":[{"heading":"string","body":"plain text"}],"notes":"string"}`;
-function onbPrompt(cat,fname,text,nImg){
-  return `Convert this staff onboarding document from a UK café into structured JSON so it can be shown as a clean, editable document.${cat!=="auto"?` It is a ${cat.toLowerCase()}.`:""}
-
-Rules:
-- Keep all of the document's content, in its original order. Do not summarise, shorten or leave anything out, and do not add anything that isn't there.
-- Keep the document's own wording. Fix only obvious typos, broken line wraps and capitalisation.
-- Split it into sections at its headings. If it has no headings, give each part a short, plain heading.
-- In "body" write plain text only: separate paragraphs with a blank line; start bullet points with "- ", numbered steps with "1. ", "2. " and so on, and tick boxes or checklist items with "[ ] " (or "[x] " if ticked in the original). No other formatting or markdown.
-- Write each table row as a bullet point, for example "- Monday: 7am to 3pm".
-- "summary" is the only place for your own words: one or two sentences on what the document covers.
-- Use "" for anything the document doesn't give. Write dates as YYYY-MM-DD when a full date is given.
-- Put signature and sign-off lines, and anything that doesn't fit a section, in "notes".
-
-Reply with only a JSON object in this shape:
-${ONB_SHAPE}
-
-File name: ${fname}
-${nImg?`The document is in the ${nImg} attached image${nImg>1?"s":""}, in page order.`:`Document text:\n"""\n${text}\n"""`}`;
-}
-function normalizeOnb(raw,cat,fname,cut){
-  raw=raw&&typeof raw==="object"&&!Array.isArray(raw)?raw:{};
-  const str=v=>v==null?"":String(v).trim();const left=[];
-  const c=cat!=="auto"?cat:(ONB_CATS.find(x=>x.toLowerCase()===str(raw.category).toLowerCase())||"Other");
-  const d={category:c,title:str(raw.title)||c,audience:str(raw.audience),owner:str(raw.owner),date:isoDate(raw.date,left),reviewDate:isoDate(raw.reviewDate,left),summary:str(raw.summary)};
-  d.sections=(Array.isArray(raw.sections)?raw.sections:[]).filter(s=>s&&typeof s==="object").map(s=>({heading:str(s.heading),body:str(s.body)})).filter(s=>s.heading||s.body);
-  const extra=[str(raw.notes)];
-  if(left.length)extra.push("Dates as written in the original: "+left.join("; "));
-  if(cut)extra.push("Only the first part of the original was converted because it was very long. Check the rest by hand.");
-  d.notes=extra.filter(Boolean).join("\n\n");
-  const now=Date.now();
-  Object.assign(d,{source:fname,createdBy:S.me,createdAt:now,updatedBy:S.me,updatedAt:now,history:[{by:S.me,at:now,what:"Converted from "+fname}]});
-  return d;
-}
 function renderBody(text){
   const frag=document.createDocumentFragment();
   const lines=String(text||"").split("\n");let list=null,kind=null,para=[];
@@ -1315,38 +1016,6 @@ function renderBody(text){
   }
   flushP();flushL();
   return frag;
-}
-let obFile=null,obCtl=null;
-function obStatus(t){$("#obStatus").textContent=t}
-function setObFile(f){obFile=f||null;$("#obDropText").textContent=obFile?obFile.name:"Drop a file here, or choose one";$("#obConvert").disabled=!obFile||!S.sample;obStatus("")}
-async function convertOnb(){
-  if(!obFile||!S.sample||ro())return;
-  if(obFile.size>25*1024*1024){obStatus("That file is over 25 MB. Upload a smaller version.");return}
-  const file=obFile,cat=$("#obKind").value,site=S.site;
-  $("#obConvert").disabled=true;obStatus("Reading the file…");
-  const done=()=>{$("#obStop").hidden=true;$("#obConvert").disabled=!obFile;obCtl=null};
-  const lim=await S.sample.limits().catch(()=>null);
-  const maxImgs=lim&&lim.images?Math.min(lim.images.maxCount,10):0;
-  let ex;
-  try{ex=await extractFile(file,maxImgs)}catch(e){obStatus((e&&e.message)||"Couldn't read that file.");done();return}
-  if(ex.images&&!maxImgs){obStatus("Photos can't be converted in this view. Upload a PDF with selectable text, or a Word file.");done();return}
-  let text=ex.text||"",cut=false;
-  if(!ex.images&&text.replace(/\s/g,"").length<20){obStatus("No text found in that file.");done();return}
-  if(text.length>90000){text=text.slice(0,90000);cut=true}
-  obCtl=new AbortController();$("#obStop").hidden=false;
-  obStatus("Claude is laying out the document. This can take a minute or two…");
-  const opts={signal:obCtl.signal,modelTier:"default",onText:({text:t})=>obStatus(`Claude is writing the document… ${t.length.toLocaleString("en-GB")} characters`)};
-  if(ex.images)opts.images=ex.images;
-  let raw;
-  try{raw=await S.sample.json(onbPrompt(cat,file.name,text,ex.images?ex.images.length:0),opts)}
-  catch(e){obStatus(e&&e.code==="invalid_json"?"That document was too long for Claude to lay out in one go, or it couldn't be read. Try uploading it in smaller parts.":sampleErr(e));done();return}
-  const doc=normalizeOnb(raw,cat,file.name,cut||!!ex.pagesSkipped);
-  if(!doc.sections.length&&!doc.notes){obStatus("Claude couldn't find any content in that file.");done();return}
-  try{
-    const ref=await C("onboarding",site).add(doc);
-    obStatus("");setObFile(null);$("#obFile").value="";done();
-    if(site===S.site)openOnb(ref.id,doc,"view");toast("Converted. Check it over, then edit anything that needs fixing.");
-  }catch(e){fail(e);obStatus("Couldn't save the converted document.");done()}
 }
 async function newOnb(template){
   if(ro())return;
@@ -1378,8 +1047,6 @@ function renderOnbList(){
       d.reviewDate?el("span",{class:"pill "+rs.cls,text:rs.text}):el("span",{class:"pill",text:d.category})));
   }
   $("#obNewRow").hidden=ro();
-  $("#obUploadPanel").hidden=ro()||!S.sample;
-  $("#obConvert").disabled=!obFile||!S.sample;
   resolveNames(ids);
 }
 function openOnb(id,data,mode){
@@ -1495,14 +1162,6 @@ function onOnbSnapshot(){
     else{P.remote=true;obSaveBar()}
   }
 }
-(()=>{const s=$("#obKind");s.append(el("option",{value:"auto"},"Work it out from the document"));for(const c of ONB_CATS)s.append(el("option",{value:c},c))})();
-$("#obFile").addEventListener("change",e=>setObFile(e.target.files[0]));
-const obDrop=$("#obDrop");
-["dragenter","dragover"].forEach(ev=>obDrop.addEventListener(ev,e=>{e.preventDefault();obDrop.classList.add("over")}));
-["dragleave","drop"].forEach(ev=>obDrop.addEventListener(ev,e=>{e.preventDefault();obDrop.classList.remove("over")}));
-obDrop.addEventListener("drop",e=>{const f=e.dataTransfer&&e.dataTransfer.files[0];if(f)setObFile(f)});
-$("#obConvert").addEventListener("click",convertOnb);
-$("#obStop").addEventListener("click",()=>obCtl&&obCtl.abort());
 $("#obNewInduction").addEventListener("click",()=>newOnb(true));
 $("#obNewBlank").addEventListener("click",()=>newOnb(false));
 window.addEventListener("beforeunload",e=>{if(S.onb&&S.onb.dirty){e.preventDefault();e.returnValue=""}});
@@ -2174,14 +1833,14 @@ show((()=>{const h=location.hash.slice(1);if(TABS.includes(h))return h;try{const
 function switchSite(id){
   if(id===S.site)return;
   if((S.plan&&S.plan.dirty)||(S.insp&&S.insp.dirty)||(S.onb&&S.onb.dirty)||setupDirty){toast("Save or discard your changes before switching site.");return}
-  if(plCtl||ehoCtl||obCtl||adBusy){toast("Wait for the upload to finish before switching site.");return}
+  if(adBusy){toast("Wait for the upload to finish before switching site.");return}
   if(S.plan)closePlan();if(S.insp)closeInsp();if(S.onb)closeOnb();
   S.site=id;try{localStorage.setItem("sfbb.site",id)}catch(e){}
   Object.assign(S,{days:{},weeks:{},allergens:[],allergenDocs:[],reviews:[],extras:[],cleaning:[],suppliers:[],contacts:[],plans:[],onboarding:[],inspections:[],staff:[],prove:[],rev:{}});
   S.settings=S.sum[id]&&S.sum[id].ready?S.sum[id].settings:normSettings(null);S.cfg=activeCfg(S.settings);
   SE=null;setupDirty=false;pubNote="";$("#setupMsg").textContent="";
   editTask("extras",null);editTask("cleaning",null);editSupplier(null);editContact(null);editStaff(null);editAlg(null);
-  setAdFile(null);setPlFile(null);setEhoFile(null);setObFile(null);
+  setAdFile(null);
   for(const x of["#problems","#wkNotes","#revNotes","#adTitle","#adNote"])$(x).value="";
   editStaff(null);
   for(const x of["#adMsg","#pMsg","#algConfirm","#tMsg","#revMsg","#pubMsg"])$(x).textContent="";
@@ -2253,8 +1912,8 @@ $("#revSave").addEventListener("click",async()=>{
 buildAlgChecks();buildTaskForm("extras");buildTaskForm("cleaning");proveForm();supForm();conForm();staffForm();editStaff(null);
 applyTabs();renderAll();
 (async()=>{
-  const[db,user,sample,assets]=await Promise.all([window.claude?.use?.("db"),window.claude?.use?.("user"),window.claude?.use?.("sample"),window.claude?.use?.("assets")]);
-  S.db=db||null;S.user=user||null;S.sample=sample||null;S.assets=assets||null;
+  const[db,user,assets]=await Promise.all([window.claude?.use?.("db"),window.claude?.use?.("user"),window.claude?.use?.("assets")]);
+  S.db=db||null;S.user=user||null;S.assets=assets||null;
   if(!S.db){$("#offline").hidden=false;S.canWrite=false;renderAll();return}
   if(S.user){
     const me=await S.user.me();S.me=me.id;

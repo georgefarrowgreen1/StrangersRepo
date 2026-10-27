@@ -165,10 +165,10 @@ test("staff journey on the real page", async () => {
   await page.locator("#openFoot", { hasText: "Seeder" }).waitFor();
   assert.equal(await page.locator("#pageTitle").innerText(), "Diary");
 
-  // Managers' sections are in More; the Claude-only import features stay hidden.
+  // Managers' sections are in More.
   await openSection(page, "plans");
   assert.equal(await page.locator("#pageTitle").innerText(), "HACCP & risk");
-  assert.equal(await page.locator("#plUploadPanel").isHidden(), true);
+  assert.doesNotMatch(await page.locator('[data-panel="plans"]').innerText(), /Claude/);
 
   // Sign out, then sign in as the new member of staff: username + temporary password, then their own.
   await accountMenu(page, "Sign out");

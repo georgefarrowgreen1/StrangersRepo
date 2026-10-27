@@ -191,6 +191,6 @@
     },
   };
 
-  const services = { db, user, sample: null, assets };
+  const services = { db, user, assets };
   window.claude = { use: async (n) => services[n] ?? null };
 })();

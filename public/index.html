@@ -59,7 +59,7 @@
   </div>
   <div id="ehoHead" hidden></div>
 
-  <div class="banner" id="offline" hidden>The shared diary isn't available in this view. Open it from claude.ai while signed in to record entries.</div>
+  <div class="banner" id="offline" hidden>Couldn't load the diary. Check the connection and reload the page.</div>
   <div class="banner" id="readonly" hidden>You can view this diary but not record entries. Ask the owner to give you Contributor access.</div>
 
 
@@ -224,20 +224,6 @@
         <div class="row" id="plNewRow"><button class="btn ghost" id="plNewHaccp">New HACCP plan</button><button class="btn ghost" id="plNewRisk">New risk assessment</button></div>
         <div id="plList"></div>
       </section>
-      <section class="panel" id="plUploadPanel" hidden>
-        <h2>Upload a document</h2>
-        <div class="drop" id="plDrop">
-          <strong id="plDropText">Drop a file here, or choose one</strong>
-          <span class="by">PDF, Word (.docx), Excel (.xlsx, .xls, .csv), text, or a photo of a paper document</span>
-          <input type="file" id="plFile" accept=".pdf,.docx,.doc,.xlsx,.xls,.csv,.txt,.md,image/jpeg,image/png,image/webp,image/gif">
-        </div>
-        <div class="fields">
-          <div class="field"><label class="label" for="plKind">What is it?</label>
-            <select id="plKind"><option value="auto">Work it out from the document</option><option value="haccp">HACCP plan</option><option value="risk">Risk assessment</option></select></div>
-        </div>
-        <div class="row"><button class="btn" id="plConvert" disabled>Convert with Claude</button><button class="btn ghost" id="plStop" hidden>Stop</button><span class="by" id="plStatus" role="status"></span></div>
-        <p class="note">Converting uses your Claude account; the first time, Claude asks you to allow this page to use it. Only the converted version is saved, not the original file.</p>
-      </section>
     </div>
     <div id="planEditView" class="stack" hidden></div>
   </div>
@@ -249,12 +235,7 @@
       <section class="panel" id="ehoUploadPanel" hidden>
         <h2>Record an inspection</h2>
         <p class="note">From the report or letter your Environmental Health Officer sent: the inspection date, your rating and scores, and every issue the inspector raised, so you can tick each one off as it's fixed.</p>
-        <div class="drop" id="ehoDrop">
-          <strong id="ehoDropText">Drop a file here, or choose one</strong>
-          <span class="by">PDF, Word (.docx), text, or a photo of the paper report</span>
-          <input type="file" id="ehoFile" accept=".pdf,.docx,.doc,.txt,.md,image/jpeg,image/png,image/webp,image/gif">
-        </div>
-        <div class="row"><button class="btn" id="ehoConvert" disabled>Read report with Claude</button><button class="btn ghost" id="ehoStop" hidden>Stop</button><button class="btn" id="ehoManual">Enter inspection</button><span class="by" id="ehoStatus" role="status"></span></div>
+        <div class="row"><button class="btn" id="ehoManual">Enter inspection</button></div>
       </section>
       <section class="panel" id="ehoPastPanel" hidden>
         <h2>Earlier inspections</h2>
@@ -269,22 +250,9 @@
     <div id="obListView" class="stack">
       <section class="panel">
         <div class="row spread"><h2>Onboarding documents</h2><span class="pill" id="obPill"></span></div>
-        <p class="note">Staff handbooks, induction checklists, policies and procedures. Start from a template and edit it here.</p>
+        <p class="note">Staff handbooks, induction checklists, policies and procedures. Start from a template and edit it here. Everyone with access to the diary can read these, so leave out personal details such as bank, National Insurance or medical information.</p>
         <div class="row" id="obNewRow"><button class="btn ghost" id="obNewInduction">New induction checklist</button><button class="btn ghost" id="obNewBlank">New blank document</button></div>
         <div id="obList"></div>
-      </section>
-      <section class="panel" id="obUploadPanel" hidden>
-        <h2>Upload a document</h2>
-        <div class="drop" id="obDrop">
-          <strong id="obDropText">Drop a file here, or choose one</strong>
-          <span class="by">PDF, Word (.docx), Excel (.xlsx, .xls, .csv), text, or a photo of a paper document</span>
-          <input type="file" id="obFile" accept=".pdf,.docx,.doc,.xlsx,.xls,.csv,.txt,.md,image/jpeg,image/png,image/webp,image/gif">
-        </div>
-        <div class="fields">
-          <div class="field"><label class="label" for="obKind">What is it?</label><select id="obKind"></select></div>
-        </div>
-        <div class="row"><button class="btn" id="obConvert" disabled>Convert with Claude</button><button class="btn ghost" id="obStop" hidden>Stop</button><span class="by" id="obStatus" role="status"></span></div>
-        <p class="note">Converting uses your Claude account. Only the converted version is saved, not the original file. Everyone with access to this diary can read these documents, so don't upload anything with staff personal details such as bank, National Insurance or medical information.</p>
       </section>
     </div>
     <div id="obEditView" class="stack" hidden></div>
@@ -362,7 +330,7 @@
       </div>
       <div class="label">Open on</div>
       <div class="toggles" id="siDays"></div>
-      <p class="note">Closed days aren't counted as missing in the history or the Needs attention summary.</p>
+      <p class="note">Closed days aren't counted as missing in Last 4 weeks or on Today.</p>
       <div class="label">Sections used at this site</div>
       <div class="toggles" id="siTabs"></div>
       <div class="label">Prove it checks used at this site</div>

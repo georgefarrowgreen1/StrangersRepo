@@ -1,12 +1,7 @@
 /*
- * Liquid Glass theme for the Kitchen Diary website.
- *
- * Restyles reference/kitchen-diary.html without editing it: claude-shim.js loads this file after the
- * page's own <style>, so these rules win. It overrides the page's design tokens first, then adds
- * translucent "glass" materials to the chrome (tab bar, cards, sheets, toast).
- *
- * To turn the theme off, delete the THEME line in public/claude-shim.js. If a new version of the page
- * from Will renames classes, the affected parts fall back to his original styling.
+ * Liquid Glass theme for the Kitchen Diary: design tokens (colours, materials, type) and the base look
+ * of panels, buttons, fields and checklists, with dark mode, Reduce Transparency and Increase Contrast.
+ * Loaded after app.css (the page's base styles); ui.css then lays out the app on top of it.
  */
 
 /* ---------- tokens ---------- */
@@ -63,10 +58,10 @@ h3{font-size:16px;font-weight:650;letter-spacing:-.01em}
 .sub{font-size:15px}
 .note{font-size:14px}
 .by{font-size:13px}
-.mono,.res,.read input,.day .d{font-family:var(--mono)}
+.mono,.res{font-family:var(--mono)}
 
 /* ---------- glass materials ---------- */
-section.panel,.site,.ehohead,.savebar,nav.tabs,.toast{
+section.panel,.ehohead,.savebar,.toast{
   background:var(--glass);
   -webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
   border:1px solid var(--glass-edge);
@@ -75,111 +70,10 @@ section.panel,.site,.ehohead,.savebar,nav.tabs,.toast{
 section.panel{border-radius:var(--r-lg);padding:20px;gap:14px}
 @media (max-width:520px){section.panel{padding:16px;border-radius:20px}}
 
-/* Insets inside glass: tinted, not blurred again (glass on glass reads as mud). */
-.unit,.checks li.alldone,.preview,.sec-edit,.iss-edit,.day,.scores div,.drop{background:var(--sunk);border-color:transparent;border-radius:16px}
-.unit{padding:14px}
+/* Insets inside glass: tinted, not blurred again (glass on glass reads as mud). */.preview,.sec-edit,.iss-edit,.scores div,.drop{background:var(--sunk);border-color:transparent;border-radius:16px}
 .drop{border:1.5px dashed var(--line)}
 .drop.over{border-color:var(--accent);background:var(--tint)}
 .empty{border-radius:16px;border-color:var(--line)}
-
-/* ---------- header ---------- */
-header.top{align-items:center;padding-top:4px}
-header.top .label{color:var(--accent)}
-#who{gap:8px;padding:6px 6px 6px 12px;border-radius:99px;background:var(--glass);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);border:1px solid var(--glass-edge);box-shadow:var(--glass-hi)}
-#who:empty{display:none}
-#who{flex-wrap:wrap;row-gap:4px;border-radius:22px}
-#who .shim-sep{display:none}
-#who .shim-change{display:inline-flex;align-items:center;min-height:32px;padding:0 12px;border-radius:99px;background:var(--tint);color:var(--accent);text-decoration:none;font-weight:600;font-size:13px}
-@media (max-width:520px){header.top .sub{display:none}}
-
-/* ---------- site switcher ---------- */
-.sites{gap:10px}
-.site{border-radius:18px;padding:12px 14px;transition:transform .2s cubic-bezier(.2,.8,.2,1),box-shadow .2s}
-.site b{font-family:var(--display);font-stretch:normal;font-weight:700;font-size:18px;letter-spacing:-.02em}
-.site .by{white-space:normal;text-wrap:balance;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.site[aria-pressed="true"]{background:var(--glass-thick);border-color:var(--accent);box-shadow:var(--glass-hi),0 0 0 1.5px var(--accent),var(--float)}
-
-/* ---------- tab bar ---------- */
-.wrap>header.top{order:-3}
-.wrap>#sites{order:-2}
-.wrap>nav.tabs{order:-1}
-nav.tabs{border-radius:24px;padding:8px;gap:4px;margin-inline:-4px}
-nav.tabs .grp{gap:4px}
-nav.tabs .grp>.label{font-size:10.5px}
-nav.tabs button{background:var(--sunk);border:0;border-radius:99px;color:var(--fg);font-weight:600;font-size:14px;padding:7px 14px;transition:background-color .2s,color .2s}
-nav.tabs button:hover{background:color-mix(in srgb,var(--fg) 12%,transparent)}
-nav.tabs button[aria-selected="true"]{background:var(--accent);color:var(--accent-ink);box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 4px 12px -2px color-mix(in srgb,var(--accent) 55%,transparent)}
-
-/* Mouse and keyboard on a wide screen: every section visible at once, groups in labelled rows
-   (wrapped rows stay aligned after the label). Not pinned, so it never covers the page. */
-@media (min-width:721px) and (pointer:fine){
-  nav.tabs .grp{position:relative;padding-left:104px;min-height:36px}
-  nav.tabs .grp>.label{position:absolute;left:8px;top:11px;width:auto;padding:0}
-}
-
-/* Touch screens (phones and iPads) and narrow windows: one compact row pinned to the top that
-   scrolls sideways, edges fading to hint there's more. */
-@media (max-width:720px),(pointer:coarse){
-  nav.tabs{position:sticky;top:calc(env(safe-area-inset-top,0px) + 8px);z-index:4;
-    display:flex;align-items:center;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x proximity;scrollbar-width:none;
-    -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 14px,#000 calc(100% - 22px),transparent);mask-image:linear-gradient(90deg,transparent 0,#000 14px,#000 calc(100% - 22px),transparent)}
-  nav.tabs::-webkit-scrollbar{display:none}
-  nav.tabs .grp{flex-wrap:nowrap;flex:none}
-  nav.tabs .grp>.label{width:auto;padding:0 4px 0 10px}
-  nav.tabs .grp+.grp{border-left:1px solid var(--line);padding-left:6px;margin-left:4px}
-  nav.tabs button{scroll-snap-align:center}
-}
-
-/* Section menus (built by claude-shim.js): Diary stays as tabs, Records and Management become
-   pull-down menus (one "More" menu on narrow screens), so the bar is one row everywhere. */
-nav.tabs.gl-menus{position:sticky;top:calc(env(safe-area-inset-top,0px) + 8px);z-index:4;display:flex;align-items:center;gap:6px;
-  flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-mask-image:none;mask-image:none;scroll-snap-type:none}
-nav.tabs.gl-menus::-webkit-scrollbar{display:none}
-nav.tabs.gl-menus .grp{position:static;padding:0;margin:0;border:0;min-height:0;flex:none;flex-wrap:nowrap}
-nav.tabs.gl-menus .grp>.label{display:none}
-.gl-menubar{display:flex;gap:4px;flex:none;padding-left:6px;margin-left:2px;border-left:1px solid var(--line)}
-.gl-trigger{font:inherit;font-size:14px;font-weight:600;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
-  background:var(--sunk);color:var(--fg);border:0;border-radius:99px;padding:7px 12px 7px 14px;cursor:pointer;transition:background-color .2s,color .2s}
-.gl-trigger:hover{background:color-mix(in srgb,var(--fg) 12%,transparent)}
-nav.tabs .gl-trigger.on,nav.tabs .gl-trigger.on:hover{background:var(--accent);color:var(--accent-ink);box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 4px 12px -2px color-mix(in srgb,var(--accent) 55%,transparent)}
-.gl-trigger[aria-expanded="true"] .gl-chev{transform:rotate(180deg)}
-.gl-chev{width:12px;height:12px;flex:none;transition:transform .2s}
-.gl-dots{display:none;width:20px;height:20px;fill:currentColor}
-@media (max-width:600px){.gl-trigger.more .gl-dots{display:block}}
-.gl-trigger.more{display:none}
-@media (max-width:600px){
-  .gl-trigger.split{display:none}
-  .gl-trigger.more:not([hidden]){display:inline-flex}
-  nav.tabs.gl-menus{gap:4px;padding:6px}
-  nav.tabs.gl-menus button{font-size:13.5px;padding-inline:9px}
-  nav.tabs.gl-menus .grp{gap:2px}
-  .gl-menubar{padding-left:4px;margin-left:0}
-  .gl-trigger.more{width:44px;padding:0!important;justify-content:center}
-  .gl-trigger.more span,.gl-trigger.more .gl-chev{display:none}
-}
-/* Smaller phones (iPhone SE, mini): a little tighter so the bar still fits on one row. */
-@media (max-width:385px){nav.tabs.gl-menus{padding:6px 4px;gap:2px}nav.tabs.gl-menus button{font-size:13px;padding-inline:7px}}
-.gl-pop{position:fixed;z-index:50;min-width:230px;max-height:min(70vh,520px);overflow-y:auto;padding:6px;display:grid;gap:2px;
-  background:var(--glass-thick);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
-  border:1px solid var(--glass-edge);border-radius:20px;box-shadow:var(--glass-hi),var(--float);transform-origin:top left}
-.gl-pop[hidden]{display:none}
-.gl-pop [role="group"]{display:grid;gap:2px}
-.gl-pop [role="group"]+[role="group"]{border-top:1px solid var(--line);margin-top:4px;padding-top:4px}
-.gl-head{font-size:11.5px;font-weight:650;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:8px 12px 4px}
-.gl-item{font:inherit;font-size:16px;text-align:left;background:transparent;border:0;border-radius:12px;color:var(--fg);
-  padding:10px 12px;min-height:44px;display:flex;align-items:center;justify-content:space-between;gap:16px;cursor:pointer}
-.gl-item:hover,.gl-item:focus-visible{background:var(--sunk);outline:none}
-.gl-item[aria-checked="true"]{color:var(--accent);font-weight:600}
-.gl-item[aria-checked="true"]::after{content:"";width:6px;height:11px;border:solid currentColor;border-width:0 2.2px 2.2px 0;transform:translateY(-2px) rotate(45deg);margin-right:4px}
-.gl-veil{position:fixed;inset:0;z-index:49;background:rgba(10,15,25,.28)}
-.gl-veil[hidden]{display:none}
-.gl-pop.sheet{left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom,0px));top:auto;min-width:0;border-radius:28px;padding:10px;max-height:75vh}
-@media (prefers-reduced-motion:no-preference){
-  .gl-pop:not([hidden]){animation:gl-drop .22s cubic-bezier(.2,.8,.2,1)}
-  .gl-pop.sheet:not([hidden]){animation:shim-in .3s cubic-bezier(.2,.8,.2,1)}
-  @keyframes gl-drop{from{opacity:0;transform:scale(.96) translateY(-4px)}}
-}
-@media (prefers-reduced-transparency:reduce){.gl-pop{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--surface)}}
 
 /* ---------- controls ---------- */
 .btn{border-radius:99px;padding:10px 18px;font-weight:600;letter-spacing:-.01em;box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 4px 14px -4px color-mix(in srgb,var(--accent) 60%,transparent);transition:transform .15s,filter .15s}
@@ -217,10 +111,6 @@ input[type=text]:focus,input[type=password]:focus,input[type=number]:focus,input
 .issue>input[type=checkbox]:checked{background:var(--ok);border-color:var(--ok)}
 .checks input[type=checkbox]:checked::after,.issue>input[type=checkbox]:checked::after{transform:translateY(-1px) rotate(45deg) scale(1)}
 .checks input[type=checkbox]:disabled{opacity:.5;cursor:not-allowed}
-.checks li.alldone{margin-top:10px}
-.checks li.alldone input[type=checkbox]{width:28px;height:28px}
-.checks li.alldone.on{background:var(--ok-bg);border-color:transparent;box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--ok) 45%,transparent)}
-.checks li.alldone.on input[type=checkbox]{background:var(--ok);border-color:var(--ok)}
 .alg input,.toggles input,.chk-row input[type=checkbox],.doc-table input[type=checkbox]{accent-color:var(--accent);width:20px;height:20px}
 
 /* ---------- status ---------- */
@@ -229,26 +119,13 @@ input[type=text]:focus,input[type=password]:focus,input[type=number]:focus,input
 .pill.warn,.rate.warn{background:var(--warn-bg);color:var(--warn)}
 .pill.bad,.rate.bad{background:var(--bad-bg);color:var(--bad)}
 .banner{border-radius:16px;background:var(--warn-bg);border:1px solid color-mix(in srgb,var(--warn) 25%,transparent)}
-.sitetag{color:var(--accent)}
 
 /* Temperature readings */
-.read input{font-size:22px;padding:10px 14px;background:var(--surface)}
-.read.ok input{background:var(--ok-bg);border-color:color-mix(in srgb,var(--ok) 55%,transparent)}
-.read.warn input{background:var(--warn-bg);border-color:color-mix(in srgb,var(--warn) 55%,transparent)}
-.read.bad input{background:var(--bad-bg);border-color:var(--bad)}
 
-/* Lists inside panels */
-.task,.card,.plan-card,.att-row,.issue,.qa{border-bottom-color:var(--line)}
-.att-row{padding:12px 0}
+/* Lists inside panels */.plan-card,.issue,.qa{border-bottom-color:var(--line)}
 
 /* History strip */
-.day{border-radius:12px;padding:7px}
-.day .bars i{height:6px;border-radius:99px}
-.day.today{outline:2px solid var(--accent);outline-offset:1px}
 /* Closed days: muted with a hatch instead of half opacity, so their dates stay readable. */
-.day.closed{opacity:1;background:repeating-linear-gradient(135deg,var(--sunk) 0 6px,transparent 6px 12px)}
-.day.closed .d{color:var(--muted)}
-@media (max-width:520px){.day{padding:5px;border-radius:10px}}
 
 /* Tables */
 th,td{border-bottom-color:var(--line)}
@@ -264,27 +141,22 @@ th,td{border-bottom-color:var(--line)}
 
 /* ---------- touch: 44pt targets ---------- */
 @media (pointer:coarse){
-  .btn,.btn.sm,nav.tabs button,.seg button,.toc button,#who .shim-change{min-height:44px}
+  .btn,.btn.sm,.seg button,.toc button{min-height:44px}
   .btn.sm{padding:8px 16px}
   .alg label,.toggles label{min-height:44px}
-  .day{min-height:44px}
 }
 
 /* ---------- motion & accessibility ---------- */
-@media (prefers-reduced-motion:no-preference){
-  .site:not([aria-pressed="true"]):hover{transform:translateY(-1px)}
-  @keyframes shim-in{from{transform:translateY(16px) scale(.98);opacity:0}}
-}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}}
 /* Reduce Transparency (iOS Settings → Accessibility): solid surfaces, no blur. */
 @media (prefers-reduced-transparency:reduce){
   :root{--glass:var(--surface);--glass-thick:var(--surface);--ambient:none}
-  section.panel,.site,.ehohead,.savebar,nav.tabs,.toast,#who,.btn.ghost{-webkit-backdrop-filter:none;backdrop-filter:none}
+  section.panel,.ehohead,.savebar,.toast,.btn.ghost{-webkit-backdrop-filter:none;backdrop-filter:none}
 }
 /* Increase Contrast: firmer edges and text. */
 @media (prefers-contrast:more){
   :root{--line:color-mix(in srgb,var(--fg) 45%,transparent);--glass-edge:color-mix(in srgb,var(--fg) 35%,transparent);--muted:color-mix(in srgb,var(--fg) 82%,var(--bg))}
-  section.panel,.site,nav.tabs,.btn.ghost{border-width:1.5px}
+  section.panel,.btn.ghost{border-width:1.5px}
 }
 @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
   :root{--glass:var(--surface)}
