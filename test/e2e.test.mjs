@@ -3,13 +3,13 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { startServer } from "./harness.mjs";
+import { startServer, SYNC_TOKEN } from "./harness.mjs";
 
 const require = createRequire(import.meta.url);
 let chromium;
 try { ({ chromium } = require("playwright")); } catch { ({ chromium } = await import("playwright")); }
 
-let srv, browser;
+let srv, browser, COOKIE = "";
 before(async () => {
   srv = await startServer();
   browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
@@ -18,7 +18,7 @@ after(async () => { await browser?.close(); await srv?.stop(); });
 
 async function api(op, body) {
   const r = await fetch(`${srv.base}/api/db/${op}`, {
-    method: "POST", headers: { "content-type": "application/json", "x-diary-name": "Seeder" }, body: JSON.stringify(body),
+    method: "POST", headers: { "content-type": "application/json", cookie: COOKIE }, body: JSON.stringify(body),
   });
   return r.json();
 }
@@ -32,23 +32,42 @@ const settings = (address) => ({
 });
 
 test("staff journey on the real page", async () => {
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(String(e)));
+
+  // Signed out, the diary sends you to sign-in. With no accounts yet, that's the first-admin setup.
+  await page.goto(srv.base + "/");
+  await page.waitForURL(/\/signin$/);
+  await page.locator("#setup").waitFor();
+  await page.fill("#sname", "Sam Patel");
+  await page.fill("#spin", "1234");
+  await page.fill("#spin2", "1234");
+  await page.fill("#scode", "wrong code");
+  await page.click("#setup button[type=submit]");
+  await page.locator("#serr", { hasText: "setup code isn't right" }).waitFor();
+  await page.fill("#scode", SYNC_TOKEN);
+  await page.click("#setup button[type=submit]");
+
+  // The admin page: add a member of staff, with a PIN created for them.
+  await page.waitForURL(/\/admin$/);
+  await page.locator(".person", { hasText: "Sam Patel (you)" }).waitFor();
+  await page.fill("#aname", "Alex Brown");
+  await page.click("#add button[type=submit]");
+  const alexPin = (await page.locator("#newPin b").textContent()).trim();
+  assert.match(alexPin, /^\d{6}$/);
+  await page.locator(".person", { hasText: "Alex Brown" }).waitFor();
+
+  COOKIE = (await ctx.cookies()).filter((c) => c.name === "sfbb_session").map((c) => `${c.name}=${c.value}`).join("");
   await api("set", { path: "settings/main", data: settings("10 Dove Street") });
   await api("set", { path: "sites/cafe/settings/main", data: settings("21 Pottergate") });
   await api("set", { path: "sites/cafe/cleaning/job1", data: { name: "Clean coffee machine", how: "Backflush", freq: "daily", who: "Barista", createdAt: Date.now(), log: [] } });
   await api("set", { path: "days/2026-10-01", data: { date: "2026-10-01", opening: { items: { o1: true }, by: "web:Seeder", at: Date.now() } } });
 
-  const ctx = await browser.newContext();
-  const page = await ctx.newPage();
-  const errors = [];
-  page.on("pageerror", (e) => errors.push(String(e)));
-  await page.goto(srv.base + "/");
-
-  // First visit: no login, just a name prompt.
-  await page.getByRole("dialog").waitFor();
-  await page.locator("#shim-name").fill("Sam Patel");
-  await page.getByRole("dialog").getByRole("button", { name: "Continue" }).click();
+  await page.click("text=Back to the diary");
   await page.locator("#who", { hasText: "Recording as Sam Patel" }).waitFor();
-  await page.locator("#who .shim-change").waitFor();
+  await page.locator("#who .shim-admin").waitFor();
 
   // Switch to the Cafe and tick an opening check.
   await page.locator("#sites button", { hasText: "Cafe" }).click();
@@ -119,9 +138,8 @@ test("staff journey on the real page", async () => {
   await link.waitFor();
   const href = await link.getAttribute("href");
   assert.match(href, /^\/_blob\/[0-9a-f]{32}$/);
-  const blob = await page.request.get(srv.base + href);
-  assert.equal(blob.headers()["content-type"], "application/pdf");
-  assert.equal((await blob.body()).length, pdf.length);
+  const blob = await page.evaluate(async (u) => { const r = await fetch(u); return { type: r.headers.get("content-type"), size: (await r.arrayBuffer()).byteLength }; }, href);
+  assert.deepEqual(blob, { type: "application/pdf", size: pdf.length });
 
   // Records show names: switch to the Roastery, whose seeded day was ticked by "Seeder".
   await page.locator("#sites button", { hasText: "Roastery" }).click();
@@ -129,13 +147,6 @@ test("staff journey on the real page", async () => {
   await page.fill("#dayDate", "2026-10-01");
   await page.locator("#dayDate").dispatchEvent("change");
   await page.locator("#openBy", { hasText: "Seeder" }).waitFor();
-
-  // Change name.
-  await page.locator("#who .shim-change").click();
-  await page.locator("#shim-name").fill("Alex Brown");
-  await Promise.all([page.waitForNavigation(), page.getByRole("dialog").getByRole("button", { name: "Save" }).click()]);
-  await page.locator("#who", { hasText: "Recording as Alex Brown" }).waitFor();
-  assert.equal(await page.getByRole("dialog").count(), 0, "no prompt once a name is saved");
 
   // Records and Management are pull-down menus; the trigger shows the current section.
   await openSection(page, "suppliers");
@@ -149,6 +160,39 @@ test("staff journey on the real page", async () => {
   // The Claude-only import features stay hidden.
   await openSection(page, "plans");
   assert.equal(await page.locator("#plUploadPanel").isHidden(), true);
+
+  // Switch user: the device remembers who's signed in here before.
+  await page.locator("#who .shim-change", { hasText: "Switch user" }).click();
+  await page.waitForURL(/\/signin$/);
+  await page.locator("#people button", { hasText: "Sam Patel" }).waitFor();
+  await page.click("#someoneElse");
+  await page.fill("#name", "Alex Brown");
+  await page.fill("#pin", "000000");
+  await page.click("#signin button[type=submit]");
+  await page.locator("#err", { hasText: "don't match" }).waitFor();
+  await page.fill("#pin", alexPin);
+  await page.click("#signin button[type=submit]");
+
+  // Staff: no admin link, no manager sections, and the server refuses manager changes.
+  await page.locator("#who", { hasText: "Recording as Alex Brown" }).waitFor();
+  await page.waitForTimeout(300);
+  assert.equal(await page.locator("#who .shim-admin").count(), 0);
+  assert.equal(await page.locator(".gl-trigger.split", { hasText: "Management" }).isVisible(), false, "Management menu hidden");
+  await page.locator(".gl-trigger.split", { hasText: "Records" }).click();
+  assert.deepEqual(await page.locator(".gl-pop:not([hidden]) .gl-item").allTextContents(), ["Extra checks", "Cleaning schedule", "Prove it", "Allergens"]);
+  await page.keyboard.press("Escape");
+  await page.goto(srv.base + "/admin");
+  await page.waitForURL(srv.base + "/");
+  await page.locator("#openList").waitFor();
+  await page.evaluate(() => { localStorage.setItem("sfbb.tab", "setup"); });
+  await page.reload();
+  await page.locator("#toast", { hasText: "for managers" }).waitFor();
+  assert.equal(await page.locator('[data-panel="day"]').isVisible(), true, "back on the daily diary");
+
+  // And signing back in is one tap on the name.
+  await page.locator("#who .shim-change", { hasText: "Switch user" }).click();
+  await page.waitForURL(/\/signin$/);
+  assert.deepEqual(await page.locator("#people button").allTextContents(), ["Alex Brown", "Sam Patel"]);
 
   assert.deepEqual(errors, []);
   await ctx.close();

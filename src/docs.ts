@@ -1,6 +1,8 @@
 // The db API behind claude-shim.js (docs/runtime-api.md).
 import { ApiError, Env, SQL_NOW_MS, invalid, readJson, json } from "./http";
 import { parseCollectionPath, parseWebDocPath, encodeDoc, deepMerge } from "./paths";
+import { User } from "./auth";
+import { recordId, requireWrite } from "./access";
 
 const BUMP_SEQ = "UPDATE meta SET v = v + 1 WHERE k = 'seq'";
 const CUR_SEQ = "(SELECT v FROM meta WHERE k = 'seq')";
@@ -207,8 +209,8 @@ export async function profiles(env: Env, ids: unknown) {
 
 const MAX_BODY = 300 * 1024;
 
-/** Routes /api/db/<op>. `by` gives the caller's user id and is only called for writes. */
-export async function handleDb(req: Request, env: Env, op: string, by: () => string): Promise<Response> {
+/** Routes /api/db/<op> for a signed-in person. Writes are checked against their role. */
+export async function handleDb(req: Request, env: Env, op: string, user: User): Promise<Response> {
   if (req.method !== "POST") throw new ApiError(405, "invalid_argument", "Use POST.");
   const body = await readJson<any>(req, op === "poll" ? 64 * 1024 : MAX_BODY);
   switch (op) {
@@ -221,13 +223,16 @@ export async function handleDb(req: Request, env: Env, op: string, by: () => str
     case "profiles":
       return json(await profiles(env, body.ids));
     case "set":
-      await setDoc(env, body.path, body.data, by());
+      requireWrite(user, body.path);
+      await setDoc(env, body.path, body.data, recordId(user));
       return json({ ok: true });
     case "update":
-      await updateDoc(env, body.path, body.patch, by());
+      requireWrite(user, body.path);
+      await updateDoc(env, body.path, body.patch, recordId(user));
       return json({ ok: true });
     case "delete":
-      await deleteDoc(env, body.path, by());
+      requireWrite(user, body.path);
+      await deleteDoc(env, body.path, recordId(user));
       return json({ ok: true });
   }
   throw new ApiError(404, "not_found", "Unknown API route.");

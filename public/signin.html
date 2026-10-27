@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Sign in · Kitchen Diary</title>
+<meta name="theme-color" content="#edf1f6" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#05070b" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Kitchen Diary">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<link rel="icon" type="image/png" href="/icon-192.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="stylesheet" href="/theme.css">
+<style>
+  /* Base layout for this standalone page; colours and materials come from theme.css. */
+  *,*::before,*::after{box-sizing:border-box}
+  body{margin:0;min-height:100vh;min-height:100dvh;display:grid;place-items:center;color:var(--fg);line-height:1.45;
+    padding:calc(24px + env(safe-area-inset-top,0px)) 16px calc(24px + env(safe-area-inset-bottom,0px))}
+  [hidden]{display:none!important}
+  main{width:100%;max-width:400px}
+  section.panel{display:grid;gap:16px}
+  form{display:grid;gap:14px}
+  h1{margin:0}
+  p{margin:0}
+  .label{text-transform:uppercase;color:var(--accent)}
+  .field{display:grid;gap:6px}
+  .field label{font-size:13px;font-weight:600;color:var(--muted)}
+  input{width:100%;font:inherit;color:inherit}
+  .btn{border:0;cursor:pointer;font:inherit;font-weight:600;color:var(--accent-ink);background:var(--accent);min-height:48px;font-size:17px}
+  .note{color:var(--muted);font-size:14px}
+  .err{color:var(--bad);font-size:14px;font-weight:600;min-height:1.2em}
+  #pin,#spin,#spin2,#rpin{font-family:var(--mono);font-size:24px;letter-spacing:.35em;text-align:center}
+  .people{display:flex;flex-wrap:wrap;gap:8px}
+  .people button{font:inherit;font-size:15px;font-weight:600;border:0;border-radius:99px;padding:10px 16px;min-height:44px;cursor:pointer;
+    background:var(--sunk);color:var(--fg)}
+  .people button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+  .linkbtn{background:none;border:0;padding:0;font:inherit;font-size:14px;color:var(--accent);cursor:pointer;justify-self:start;min-height:32px}
+</style>
+</head>
+<body>
+<main>
+  <section class="panel">
+    <div>
+      <div class="label">Strangers Coffee</div>
+      <h1>Kitchen Diary</h1>
+    </div>
+
+    <form id="signin" hidden novalidate>
+      <div class="field" id="peopleField" hidden>
+        <label id="peopleLabel">Who are you?</label>
+        <div class="people" id="people" role="group" aria-labelledby="peopleLabel"></div>
+      </div>
+      <div class="field" id="nameField">
+        <label for="name">Your name</label>
+        <input type="text" id="name" name="username" autocomplete="username" autocapitalize="words" maxlength="60" required>
+      </div>
+      <button type="button" class="linkbtn" id="someoneElse" hidden>Someone else</button>
+      <div class="field">
+        <label for="pin">PIN</label>
+        <input id="pin" name="password" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="current-password" required>
+      </div>
+      <p class="err" id="err" role="alert"></p>
+      <button class="btn" type="submit">Sign in</button>
+      <p class="note">Forgotten your PIN? Ask an admin to reset it.</p>
+      <button type="button" class="linkbtn" id="toRecover">I'm an admin and I've forgotten my PIN</button>
+    </form>
+
+    <form id="recover" hidden novalidate>
+      <p class="note">Set a new PIN for an admin account using the setup code.</p>
+      <div class="field">
+        <label for="rname">Admin name</label>
+        <input type="text" id="rname" autocomplete="username" autocapitalize="words" maxlength="60" required>
+      </div>
+      <div class="field">
+        <label for="rpin">New PIN (4 to 6 digits)</label>
+        <input id="rpin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="new-password" required>
+      </div>
+      <div class="field">
+        <label for="rcode">Setup code</label>
+        <input type="text" id="rcode" autocomplete="off" spellcheck="false" required>
+        <p class="note">The sync token saved in Cloudflare (Settings → Variables and Secrets → SYNC_TOKEN).</p>
+      </div>
+      <p class="err" id="rerr" role="alert"></p>
+      <button class="btn" type="submit">Set new PIN and sign in</button>
+      <button type="button" class="linkbtn" id="toSignin">Back to sign in</button>
+    </form>
+
+    <form id="setup" hidden novalidate>
+      <p class="note">Set up the first admin account. You'll use it to add everyone else.</p>
+      <div class="field">
+        <label for="sname">Your name</label>
+        <input type="text" id="sname" autocomplete="username" autocapitalize="words" maxlength="60" required>
+      </div>
+      <div class="field">
+        <label for="spin">Choose a PIN (4 to 6 digits)</label>
+        <input id="spin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="new-password" required>
+      </div>
+      <div class="field">
+        <label for="spin2">Enter the PIN again</label>
+        <input id="spin2" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="new-password" required>
+      </div>
+      <div class="field">
+        <label for="scode">Setup code</label>
+        <input type="text" id="scode" autocomplete="off" spellcheck="false" required>
+        <p class="note">The sync token you saved in Cloudflare (Settings → Variables and Secrets → SYNC_TOKEN).</p>
+      </div>
+      <p class="err" id="serr" role="alert"></p>
+      <button class="btn" type="submit">Create admin account</button>
+    </form>
+  </section>
+</main>
+<script src="/signin.js"></script>
+</body>
+</html>

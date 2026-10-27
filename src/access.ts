@@ -1,19 +1,18 @@
+import { User, sessionUser } from "./auth";
 import { ApiError, Env, safeEqual } from "./http";
 
 /** Who is making a request. */
 export type Caller =
   | { kind: "sync" } // Will's Claude, holding the sync token
-  | { kind: "person"; name: string | null }; // anyone on the website; name is what they typed
+  | { kind: "user"; user: User } // a signed-in member of staff
+  | { kind: "anon" }; // not signed in
 
 /**
  * The one place access is decided. Every request passes through here before routing.
  *
- * For now the site is public: pages and the db/assets API are open, and the person is identified only
- * by the name they typed (sent by claude-shim.js). Only /api/sync/* needs the sync token.
- *
- * When logins are added (a shared password with a signed session cookie, or Cloudflare Access reading
- * Cf-Access-Authenticated-User-Email), this function is where they go: return a redirect/401 for
- * requests without a session, and take the name from the session instead of the header.
+ * /api/sync/* needs the sync token. Everything else identifies the person from their session cookie
+ * (name + PIN sign-in, see auth.ts); index.ts then decides what an anonymous caller may reach (only the
+ * sign-in page and its assets) and what each role may do (see canWrite and canOpenTab below).
  */
 export async function authorize(req: Request, env: Env, url: URL): Promise<Caller | Response> {
   if (url.pathname.startsWith("/api/sync/")) {
@@ -27,34 +26,47 @@ export async function authorize(req: Request, env: Env, url: URL): Promise<Calle
     }
     return { kind: "sync" };
   }
-  return { kind: "person", name: personName(req) };
+  const user = await sessionUser(req, env);
+  return user ? { kind: "user", user } : { kind: "anon" };
 }
 
-/** The name sent by the shim (URI-encoded header), falling back to the name cookie. */
-function personName(req: Request): string | null {
-  let raw = req.headers.get("x-diary-name");
-  if (raw == null) {
-    const m = (req.headers.get("cookie") || "").match(/(?:^|;\s*)sfbb_name=([^;]*)/);
-    raw = m ? m[1] : null;
+/** Pages and files anyone may load: the sign-in screen and what it needs. */
+export function isPublicAsset(path: string): boolean {
+  return (
+    path === "/signin" || path === "/signin.html" || path === "/signin.js" || path === "/theme.css" ||
+    path === "/robots.txt" || path === "/manifest.webmanifest" || /^\/icon-\d+\.png$/.test(path)
+  );
+}
+
+export function requireUser(caller: Caller): User {
+  if (caller.kind !== "user") throw new ApiError(401, "unauthenticated", "Sign in to continue.");
+  return caller.user;
+}
+
+/** The id written into records ("by" fields): web:<name>, as before accounts existed. */
+export const recordId = (u: User) => "web:" + u.name;
+
+/* ---------- roles ---------- */
+
+// Sections and data only managers and admins may change. Staff can still read them (the "Needs attention"
+// summary counts overdue reviews and plans), but the page hides these sections from them.
+const MANAGER_TABS = new Set(["eho", "plans", "suppliers", "contacts", "staff", "onboarding", "review", "setup"]);
+const MANAGER_COLLECTIONS = new Set(["settings", "plans", "inspections", "suppliers", "contacts", "staff", "onboarding", "reviews"]);
+
+export const canOpenTab = (u: User, tab: string) => u.role !== "staff" || !MANAGER_TABS.has(tab);
+
+export function canWrite(u: User, path: string): boolean {
+  if (u.role !== "staff") return true;
+  if (path === "config/shared") return false;
+  const parts = path.split("/");
+  return !MANAGER_COLLECTIONS.has(parts[parts.length - 2]);
+}
+
+export function requireWrite(u: User, path: unknown): void {
+  if (typeof path === "string" && !canWrite(u, path)) {
+    // Not invalid_argument: the page treats that as "read-only for everything".
+    throw new ApiError(403, "permission_denied", "Only managers can change this.");
   }
-  if (raw == null) return null;
-  try {
-    return cleanName(decodeURIComponent(raw));
-  } catch {
-    return null;
-  }
-}
-
-export function cleanName(s: string): string | null {
-  const name = s.replace(/[\u0000-\u001f\u007f]/g, "").replace(/\s+/g, " ").trim();
-  return name && name.length <= 60 ? name : null;
-}
-
-/** The user id written into records: web:<name>. Writes need a name so records show who did them. */
-export function requireName(caller: Caller): string {
-  if (caller.kind === "sync") return "sync";
-  if (!caller.name) throw new ApiError(401, "name_required", "Enter your name before recording entries.");
-  return "web:" + caller.name;
 }
 
 const WINDOW_MS = 15 * 60 * 1000;

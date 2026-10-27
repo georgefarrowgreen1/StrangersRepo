@@ -52,7 +52,8 @@ Nested plain objects merge recursively; everything else (arrays, strings, number
 Reject with an object `{code, message}`. Codes the page understands:
 - `invalid_argument`: bad path or data. **Note:** the page treats this on a write as "you don't have write access" and switches to read-only, so use it only for genuinely invalid writes.
 - `quota_exceeded`: database full.
-- `revoked`: session ended. Not used while the site is public; reserved for when logins are added.
+- `revoked`: session ended. Not used on the website: when a session ends the API returns 401 `unauthenticated` and the shim sends the person to the sign-in page.
+- `permission_denied`: the signed-in role can't change this (staff saving manager data). The page shows its generic "Couldn't save" message.
 - `not_found`: `update` on a missing document.
 Anything else shows "Couldn't save. Check your connection and try again."
 

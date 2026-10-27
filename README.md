@@ -11,7 +11,7 @@ It's written so that the person hosting it can hand the whole job to Claude Code
 ### What you'll need
 
 - A free Cloudflare account. The site runs at **strangers.georgefarrowgreen.com**, so the domain `georgefarrowgreen.com` must be managed in the same Cloudflare account that hosts the site. If its DNS is elsewhere, move it to Cloudflare first.
-- Nothing secret from Will. For now the site is public (no login); accounts will be added later. You'll generate the sync token yourself during set-up.
+- Nothing secret from Will. You'll generate the sync token yourself during set-up; it's also the setup code for the first admin account.
 
 ### How to set it up
 
@@ -41,6 +41,11 @@ Once your friend has deployed the site and sent you the sync token:
 - Reading uploaded documents with Claude (HACCP plans, EHO reports, onboarding documents) works in Claude only. On the website those upload buttons are hidden.
 - Allergen PDFs are kept separately on each side for now; upload them where staff will look for them.
 
-### A note on access
+### Accounts
 
-For now the site is **public**: anyone with the address can open the diary and record entries. Staff just type their name the first time so records show who did what. The site is hidden from search engines, but don't share the address beyond the team. Accounts will be added later, either a shared site password or per-person email sign-in with **Cloudflare Access** (free for up to 50 people); `CLAUDE.md` notes both.
+Everyone signs in with their **name and a PIN**. Without signing in, only the sign-in page is visible. There are three roles:
+- **Staff**: the daily diary, end of week, last 4 weeks, extra checks, cleaning, Prove it and allergens.
+- **Managers**: also EHO, HACCP & risk, suppliers, contacts, staff training, onboarding, the 4-weekly review and Setup.
+- **Admins**: everything, plus the **Admin** page, where they add people, change roles, reset PINs and switch accounts off. It also shows whether the sync is running.
+
+Records made on the website show the signed-in person's name, exactly as before.

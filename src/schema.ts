@@ -23,6 +23,25 @@ const SCHEMA = [
   // Small key/value table: 'seq' (bumped on every write) and 'lastApplyAt'.
   "CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v INTEGER NOT NULL)",
   "INSERT OR IGNORE INTO meta (k, v) VALUES ('seq', 0), ('lastApplyAt', 0)",
+  // Staff accounts (sign in with name + PIN). Records still use 'web:<name>' as the user id.
+  `CREATE TABLE IF NOT EXISTS users (
+    id            TEXT PRIMARY KEY,             -- random
+    name          TEXT NOT NULL,                -- as shown on records, e.g. 'Sam Patel'
+    name_key      TEXT NOT NULL UNIQUE,         -- lower-cased name, for sign-in and uniqueness
+    role          TEXT NOT NULL,                -- 'admin' | 'manager' | 'staff'
+    pin_hash      TEXT NOT NULL,
+    pin_salt      TEXT NOT NULL,
+    active        INTEGER NOT NULL DEFAULT 1,
+    session_ver   INTEGER NOT NULL DEFAULT 1,   -- bump to sign this person out everywhere
+    failed        INTEGER NOT NULL DEFAULT 0,   -- wrong PINs in a row
+    locked_until  INTEGER NOT NULL DEFAULT 0,   -- ms since epoch
+    created_at    INTEGER NOT NULL,
+    created_by    TEXT,
+    updated_at    INTEGER NOT NULL,
+    last_login_at INTEGER
+  )`,
+  // Server-generated secrets (the session signing key), created on first use.
+  "CREATE TABLE IF NOT EXISTS secrets (k TEXT PRIMARY KEY, v TEXT NOT NULL)",
   // Per-IP write counters for rate limiting.
   "CREATE TABLE IF NOT EXISTS rate_limits (ip TEXT NOT NULL, window INTEGER NOT NULL, n INTEGER NOT NULL, PRIMARY KEY (ip, window))",
 ];

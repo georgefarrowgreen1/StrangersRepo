@@ -3,15 +3,35 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { startServer, SYNC_TOKEN } from "./harness.mjs";
 
-let srv;
-before(async () => { srv = await startServer({ writeLimit: 80 }); });
+let srv, ADMIN, STAFF;
+before(async () => {
+  srv = await startServer({ writeLimit: 80 });
+  ADMIN = await setupAdmin("Sam Patel", "1234");
+  const r = await admin("POST", "users", { name: "Alex Brown", role: "staff", pin: "5678" });
+  assert.equal(r.status, 200);
+  STAFF = await login("Alex Brown", "5678");
+});
 after(async () => { await srv?.stop(); });
 
-const NAME = "Sam Patel";
-async function db(op, body, name = NAME) {
+const cookieOf = (res) => (res.headers.get("set-cookie") || "").split(";")[0];
+
+async function setupAdmin(name, pin) {
+  const r = await fetch(`${srv.base}/api/auth/setup`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, pin, code: SYNC_TOKEN }) });
+  assert.equal(r.status, 200, await r.clone().text());
+  return cookieOf(r);
+}
+async function login(name, pin) {
+  const r = await fetch(`${srv.base}/api/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, pin }) });
+  return r.status === 200 ? cookieOf(r) : { status: r.status, body: await r.json() };
+}
+async function db(op, body, cookie = ADMIN) {
   const headers = { "content-type": "application/json" };
-  if (name) headers["x-diary-name"] = encodeURIComponent(name);
+  if (cookie) headers.cookie = cookie;
   const r = await fetch(`${srv.base}/api/db/${op}`, { method: "POST", headers, body: JSON.stringify(body) });
+  return { status: r.status, body: await r.json() };
+}
+async function admin(method, route, body, cookie = ADMIN) {
+  const r = await fetch(`${srv.base}/api/admin/${route}`, { method, headers: { "content-type": "application/json", cookie }, body: body && JSON.stringify(body) });
   return { status: r.status, body: await r.json() };
 }
 async function sync(method, route, body, token = SYNC_TOKEN) {
@@ -21,15 +41,121 @@ async function sync(method, route, body, token = SYNC_TOKEN) {
   return { status: r.status, body: await r.json() };
 }
 
-test("page is served with the shim and noindex, no login", async () => {
-  const r = await fetch(srv.base + "/");
+test("signed out: only the sign-in page is reachable", async () => {
+  const home = await fetch(srv.base + "/", { redirect: "manual" });
+  assert.equal(home.status, 302);
+  assert.equal(home.headers.get("location"), "/signin");
+  const adm = await fetch(srv.base + "/admin", { redirect: "manual" });
+  assert.equal(adm.headers.get("location"), "/signin?next=%2Fadmin");
+  assert.equal((await fetch(srv.base + "/signin")).status, 200);
+  assert.equal((await fetch(srv.base + "/theme.css")).status, 200);
+  assert.equal((await fetch(srv.base + "/claude-shim.js", { redirect: "manual" })).status, 302);
+  const r = await db("get", { path: "days/x" }, null);
+  assert.equal(r.status, 401);
+  assert.equal(r.body.code, "unauthenticated");
+  assert.equal((await fetch(srv.base + "/_blob/" + "0".repeat(32))).status, 401);
+  const me = await (await fetch(srv.base + "/api/auth/me")).json();
+  assert.deepEqual(me, { user: null, setupNeeded: false });
+});
+
+test("page is served with the shim and noindex once signed in", async () => {
+  const r = await fetch(srv.base + "/", { headers: { cookie: ADMIN } });
   assert.equal(r.status, 200);
   const html = await r.text();
   assert.match(html, /<meta name="robots" content="noindex,nofollow">/);
   assert.match(html, /<script src="\/claude-shim.js"><\/script>\n<script>/);
   assert.equal(r.headers.get("x-robots-tag"), "noindex, nofollow");
+  assert.equal(r.headers.get("cache-control"), "private, no-store");
   assert.match(await (await fetch(srv.base + "/robots.txt")).text(), /Disallow: \//);
-  assert.equal((await fetch(srv.base + "/claude-shim.js")).status, 200);
+  assert.equal((await fetch(srv.base + "/claude-shim.js", { headers: { cookie: ADMIN } })).status, 200);
+});
+
+test("setup works once, and needs the setup code", async () => {
+  const again = await fetch(`${srv.base}/api/auth/setup`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Eve", pin: "1111", code: SYNC_TOKEN }) });
+  assert.equal(again.status, 409);
+  const me = await (await fetch(srv.base + "/api/auth/me", { headers: { cookie: ADMIN } })).json();
+  assert.deepEqual(me.user, { id: me.user.id, name: "Sam Patel", role: "admin", recordId: "web:Sam Patel" });
+});
+
+test("sign-in: wrong PINs, case-insensitive names, lockout and unlock", async () => {
+  assert.equal(typeof (await login("alex brown", "5678")), "string", "names match regardless of case");
+  const wrong = await login("Alex Brown", "0000");
+  assert.equal(wrong.status, 401);
+  assert.equal(wrong.body.code, "wrong_pin");
+  assert.equal((await login("Nobody Here", "1234")).body.code, "wrong_pin", "unknown names get the same answer");
+  const { body } = await admin("POST", "users", { name: "Lock Test", role: "staff", pin: "2468" });
+  for (let i = 0; i < 4; i++) assert.equal((await login("Lock Test", "1357")).status, 401);
+  const locked = await login("Lock Test", "1357");
+  assert.equal(locked.status, 423);
+  assert.equal((await login("Lock Test", "2468")).status, 423, "even the right PIN waits out the lock");
+  const list = (await admin("GET", "users")).body.users;
+  assert.equal(list.find((u) => u.name === "Lock Test").locked, true);
+  await admin("PATCH", `users/${body.user.id}`, { unlock: true });
+  assert.equal(typeof (await login("Lock Test", "2468")), "string");
+});
+
+test("roles: staff record entries but can't change manager sections or use admin", async () => {
+  assert.equal((await db("set", { path: "sites/cafe/days/2026-10-01", data: { date: "2026-10-01" } }, STAFF)).status, 200);
+  assert.equal((await db("set", { path: "sites/cafe/cleaning/c1", data: { name: "Mop" } }, STAFF)).status, 200);
+  for (const path of ["sites/cafe/settings/main", "config/shared", "sites/cafe/suppliers/s1", "plans/p1", "sites/asg/reviews/2026-10-01"]) {
+    const r = await db("set", { path, data: { a: 1 } }, STAFF);
+    assert.equal(r.status, 403, path);
+    assert.equal(r.body.code, "permission_denied");
+  }
+  assert.equal((await db("get", { path: "sites/cafe/settings/main" }, STAFF)).status, 200, "staff can still read");
+  assert.equal((await admin("GET", "users", undefined, STAFF)).status, 403);
+  const adm = await fetch(srv.base + "/admin", { headers: { cookie: STAFF }, redirect: "manual" });
+  assert.equal(adm.headers.get("location"), "/");
+  const r = await db("get", { path: "sites/cafe/days/2026-10-01" }, STAFF);
+  assert.equal(r.body.exists, true);
+});
+
+test("admin: add, rename, PIN reset and switch off sign people out", async () => {
+  const add = await admin("POST", "users", { name: "Jo Manager", role: "manager" });
+  assert.equal(add.status, 200);
+  assert.match(add.body.pin, /^\d{6}$/, "a PIN is created when none is given");
+  assert.equal((await admin("POST", "users", { name: "jo manager", role: "staff" })).body.code, "name_taken");
+  assert.equal((await admin("POST", "users", { name: "X", role: "boss" })).body.code, "invalid_argument");
+  const id = add.body.user.id;
+  const jo = await login("Jo Manager", add.body.pin);
+  assert.equal((await db("set", { path: "sites/cafe/suppliers/s9", data: { name: "Ok" } }, jo)).status, 200, "managers can");
+
+  const reset = await admin("PATCH", `users/${id}`, { pin: "generate" });
+  assert.match(reset.body.pin, /^\d{6}$/);
+  assert.equal((await db("get", { path: "days/x" }, jo)).status, 401, "old session ends after a PIN reset");
+  const jo2 = await login("Jo Manager", reset.body.pin);
+
+  await admin("PATCH", `users/${id}`, { name: "Jo Smith" });
+  assert.equal((await db("get", { path: "days/x" }, jo2)).status, 401, "renaming signs them out so records use the new name");
+  const jo3 = await login("Jo Smith", reset.body.pin);
+  await db("set", { path: "sites/cafe/days/2026-10-02", data: { date: "2026-10-02" } }, jo3);
+  const changes = (await sync("GET", "changes?since=0")).body.changes;
+  assert.ok(changes.some((c) => c.path === "sites/cafe/days/2026-10-02"));
+
+  await admin("PATCH", `users/${id}`, { active: false });
+  assert.equal((await db("get", { path: "days/x" }, jo3)).status, 401);
+  assert.equal((await login("Jo Smith", reset.body.pin)).status, 401, "switched-off people can't sign in");
+});
+
+test("an admin who forgot their PIN can set a new one with the setup code", async () => {
+  const post = (body) => fetch(`${srv.base}/api/auth/recover`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  assert.equal((await post({ name: "Sam Patel", pin: "9999", code: "nope" })).status, 403);
+  assert.equal((await post({ name: "Alex Brown", pin: "9999", code: SYNC_TOKEN })).status, 404, "staff can't use it");
+  const r = await post({ name: "Sam Patel", pin: "9999", code: SYNC_TOKEN });
+  assert.equal(r.status, 200);
+  assert.equal((await db("get", { path: "days/x" })).status, 401, "old admin sessions end");
+  ADMIN = await login("Sam Patel", "9999");
+  assert.equal(typeof ADMIN, "string");
+});
+
+test("admin: the last admin can't be demoted or switched off", async () => {
+  const users = (await admin("GET", "users")).body.users;
+  const me = users.find((u) => u.name === "Sam Patel");
+  assert.equal((await admin("PATCH", `users/${me.id}`, { role: "staff" })).body.code, "last_admin");
+  assert.equal((await admin("PATCH", `users/${me.id}`, { active: false })).body.code, "last_admin");
+  const st = await admin("GET", "status");
+  assert.equal(st.status, 200);
+  assert.equal(st.body.syncTokenSet, true);
 });
 
 test("set, get and deep-merging update", async () => {
@@ -73,12 +199,6 @@ test("invalid paths and data are rejected with invalid_argument", async () => {
   assert.equal((await db("query", { path: "days", orderBy: "date; drop table docs" })).body.code, "invalid_argument");
 });
 
-test("writes need a name", async () => {
-  const r = await db("set", { path: "days/2026-01-01", data: { date: "2026-01-01" } }, null);
-  assert.equal(r.status, 401);
-  assert.equal(r.body.code, "name_required");
-});
-
 test("query ordering and limit; deletes hide docs", async () => {
   for (const d of ["2026-09-01", "2026-09-03", "2026-09-02"]) await db("set", { path: `sites/asg/days/${d}`, data: { date: d } });
   const q = await db("query", { path: "sites/asg/days", orderBy: "date", dir: "desc", limit: 2 });
@@ -115,7 +235,7 @@ test("poll handles as many subscriptions as the page opens", async () => {
   const r = await db("poll", { since: null, queries });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(Object.keys(r.body.results).length, 40);
-  assert.deepEqual(r.body.results["sites/cafe/days"].docs.map((d) => d.id), ["2026-10-27"]);
+  assert.equal(r.body.results["sites/cafe/days"].docs[0].id, "2026-10-27", "newest day first");
 });
 
 test("profiles resolves web names and synced Claude names", async () => {
@@ -127,22 +247,22 @@ test("profiles resolves web names and synced Claude names", async () => {
 test("PDF upload, serve and delete", async () => {
   const pdf = new TextEncoder().encode("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n");
   const up = await fetch(`${srv.base}/api/assets`, {
-    method: "POST", headers: { "content-type": "application/pdf", "x-diary-name": "Sam" }, body: pdf,
+    method: "POST", headers: { "content-type": "application/pdf", cookie: ADMIN }, body: pdf,
   });
   assert.equal(up.status, 200);
   const info = await up.json();
   assert.match(info.id, /^[0-9a-f]{32}$/);
   assert.equal(info.url, "/_blob/" + info.id);
-  const get = await fetch(srv.base + info.url);
+  const get = await fetch(srv.base + info.url, { headers: { cookie: ADMIN } });
   assert.equal(get.headers.get("content-type"), "application/pdf");
   assert.equal(get.headers.get("content-disposition"), "inline");
   assert.equal(get.headers.get("x-content-type-options"), "nosniff");
   assert.equal((await get.arrayBuffer()).byteLength, pdf.length);
-  const bad = await fetch(`${srv.base}/api/assets`, { method: "POST", headers: { "content-type": "text/html", "x-diary-name": "Sam" }, body: "<p>" });
+  const bad = await fetch(`${srv.base}/api/assets`, { method: "POST", headers: { "content-type": "text/html", cookie: ADMIN }, body: "<p>" });
   assert.equal((await bad.json()).code, "unsupported_type");
-  const del = await fetch(`${srv.base}/api/assets/${info.id}`, { method: "DELETE", headers: { "x-diary-name": "Sam" } });
+  const del = await fetch(`${srv.base}/api/assets/${info.id}`, { method: "DELETE", headers: { cookie: ADMIN } });
   assert.deepEqual(await del.json(), { deleted: true });
-  assert.equal((await fetch(srv.base + info.url)).status, 404);
+  assert.equal((await fetch(srv.base + info.url, { headers: { cookie: ADMIN } })).status, 404);
 });
 
 test("sync routes need the token", async () => {

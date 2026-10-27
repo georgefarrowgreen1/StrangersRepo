@@ -16,116 +16,74 @@
     else document.body.appendChild(Object.assign(document.createElement("link"), { rel: "stylesheet", href: THEME }));
   }
 
-  /* ---------- the person's name (no login for now) ---------- */
+  /* ---------- the signed-in person ---------- */
 
-  const COOKIE = "sfbb_name";
-  const YEAR = 365 * 24 * 3600;
+  // Sections only managers and admins use. The Worker enforces the same rule on saves.
+  const MANAGER_TABS = new Set(["eho", "plans", "suppliers", "contacts", "staff", "onboarding", "review", "setup"]);
 
-  function readName() {
-    const m = document.cookie.match(/(?:^|;\s*)sfbb_name=([^;]*)/);
-    if (!m) return "";
-    try { return cleanName(decodeURIComponent(m[1])); } catch (e) { return ""; }
-  }
-  function cleanName(s) {
-    const n = String(s || "").replace(/[\u0000-\u001f\u007f]/g, "").replace(/\s+/g, " ").trim();
-    return n.length <= 60 ? n : "";
-  }
-  function saveName(name) {
-    const secure = location.protocol === "https:" ? "; Secure" : "";
-    document.cookie = `${COOKIE}=${encodeURIComponent(name)}; Max-Age=${YEAR}; Path=/; SameSite=Lax${secure}`;
+  function goSignIn() {
+    location.replace("/signin?next=" + encodeURIComponent(location.pathname + location.search));
   }
 
-  let name = readName();
-  let namePromise = null;
-
-  function ensureName() {
-    if (name) return Promise.resolve(name);
-    if (!namePromise) namePromise = askName({ first: true }).then((n) => { name = n; saveName(n); prefillSignName(n); return n; });
-    return namePromise;
-  }
+  // Never settles when redirecting to sign-in, so the page doesn't start up with no one signed in.
+  const mePromise = fetch("/api/auth/me")
+    .then((r) => r.json())
+    .then(({ user }) => (user ? user : (goSignIn(), new Promise(() => {}))));
 
   const style = document.createElement("style");
   style.textContent = `
     #who img[src=""]{display:none}
-    .shim-veil{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.45)}
-    .shim-box{width:100%;max-width:380px;box-sizing:border-box;padding:20px;border-radius:var(--r,6px);
-      background:var(--surface,#fff);color:var(--fg,#16212a);border:1px solid var(--line,#d3dade);box-shadow:0 10px 40px rgba(0,0,0,.25)}
-    .shim-box h2{margin:0 0 6px;font-family:var(--display,inherit);font-size:20px}
-    .shim-box p{margin:0 0 14px;color:var(--muted,#5a6872);font-size:14px;line-height:1.4}
-    .shim-box input{width:100%;box-sizing:border-box;font:inherit;font-size:16px;padding:10px;border-radius:var(--r,6px);
-      border:1px solid var(--line,#d3dade);background:var(--bg,#f3f5f6);color:inherit}
-    .shim-box .shim-err{color:var(--bad,#b3261e);font-size:13px;min-height:18px;margin-top:6px}
-    .shim-row{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}
+    nav.tabs button.gl-denied{display:none!important}
     .shim-change{background:none;border:0;padding:0;font:inherit;font-size:12px;color:var(--accent,#1d5a7e);
       text-decoration:underline;cursor:pointer;white-space:nowrap}
   `;
   document.head.appendChild(style);
 
-  function askName({ first }) {
-    return new Promise((resolve) => {
-      const veil = document.createElement("div");
-      veil.className = "shim-veil";
-      veil.innerHTML = `
-        <form class="shim-box" role="dialog" aria-modal="true" aria-labelledby="shim-title">
-          <h2 id="shim-title">${first ? "Who's using the diary?" : "Change name"}</h2>
-          <p>Enter your name. The diary records who did each check, so use the name your team knows you by.</p>
-          <label for="shim-name" class="by">Your name</label>
-          <input id="shim-name" name="name" autocomplete="name" maxlength="60" required>
-          <div class="shim-err" aria-live="polite"></div>
-          <div class="shim-row">
-            ${first ? "" : '<button type="button" class="btn ghost" data-cancel>Cancel</button>'}
-            <button type="submit" class="btn">${first ? "Continue" : "Save"}</button>
-          </div>
-        </form>`;
-      const form = veil.querySelector("form");
-      const input = veil.querySelector("input");
-      const err = veil.querySelector(".shim-err");
-      input.value = name;
-      form.addEventListener("submit", (e) => {
-        e.preventDefault();
-        const n = cleanName(input.value);
-        if (!n) { err.textContent = input.value.trim() ? "Use 60 characters or fewer." : "Enter your name to continue."; input.focus(); return; }
-        veil.remove();
-        resolve(n);
-      });
-      const cancel = veil.querySelector("[data-cancel]");
-      if (cancel) cancel.addEventListener("click", () => { veil.remove(); resolve(null); });
-      document.body.appendChild(veil);
-      input.focus();
-      input.select();
-    });
+  async function switchUser() {
+    try { await fetch("/api/auth/logout", { method: "POST" }); } catch (e) {}
+    location.replace("/signin");
   }
 
-  async function changeName() {
-    const n = await askName({ first: false });
-    if (!n || n === name) return;
-    saveName(n);
-    try { localStorage.setItem("sfbb.signName", n); } catch (e) {}
-    location.reload();
-  }
-
-  // "Recording as Sam Patel · Change name": the page fills #who; add the link beside its text.
-  function addChangeLink() {
+  // "Recording as Sam Patel · Switch user · Admin": the page fills #who; add the links beside its text.
+  function addWhoLinks() {
     const who = document.getElementById("who");
     if (!who || !who.firstChild || who.querySelector(".shim-change")) return;
-    const sep = document.createElement("span");
-    sep.className = "by";
-    sep.textContent = "·";
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "shim-change";
-    btn.textContent = "Change name";
-    btn.addEventListener("click", changeName);
-    who.append(sep, btn);
+    const sep = () => Object.assign(document.createElement("span"), { className: "by shim-sep", textContent: "·" });
+    const sw = Object.assign(document.createElement("button"), { type: "button", className: "shim-change", textContent: "Switch user" });
+    sw.addEventListener("click", switchUser);
+    who.append(sep(), sw);
+    mePromise.then((u) => {
+      if (u.role === "admin" && !who.querySelector(".shim-admin")) {
+        who.append(sep(), Object.assign(document.createElement("a"), { className: "shim-change shim-admin", href: "/admin", textContent: "Admin" }));
+      }
+    });
   }
   function watchWho() {
     const who = document.getElementById("who");
     if (!who) return;
-    new MutationObserver(addChangeLink).observe(who, { childList: true });
-    addChangeLink();
+    new MutationObserver(addWhoLinks).observe(who, { childList: true });
+    addWhoLinks();
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", watchWho);
   else watchWho();
+
+  // Staff don't see the manager sections; if one is opened anyway (a saved tab, or a "Needs attention"
+  // link), go back to the daily diary.
+  function applyRole(nav, user, refreshMenus) {
+    if (user.role !== "staff") return;
+    nav.querySelectorAll("button[data-tab]").forEach((b) => { if (MANAGER_TABS.has(b.dataset.tab)) b.classList.add("gl-denied"); });
+    if (refreshMenus) refreshMenus();
+    const guard = () => {
+      const sel = nav.querySelector('button[aria-selected="true"]');
+      if (!sel || !sel.classList.contains("gl-denied")) return;
+      const day = nav.querySelector('button[data-tab="day"]');
+      if (day) day.click();
+      const t = document.getElementById("toast");
+      if (t) { t.textContent = "That section is for managers."; t.hidden = false; setTimeout(() => { t.hidden = true; }, 2400); }
+    };
+    new MutationObserver(guard).observe(nav, { subtree: true, attributes: true, attributeFilter: ["aria-selected"] });
+    guard();
+  }
 
   /* ---------- page polish (the page file itself stays untouched) ---------- */
 
@@ -182,7 +140,8 @@
           }
         });
       });
-      if (THEME) buildSectionMenus(nav);
+      const refreshMenus = THEME ? buildSectionMenus(nav) : null;
+      mePromise.then((u) => applyRole(nav, u, refreshMenus));
       const sel = nav.querySelector('button[aria-selected="true"]');
       if (sel && sel.offsetParent && nav.scrollWidth > nav.clientWidth) nav.scrollLeft = sel.offsetLeft - nav.clientWidth / 2 + sel.offsetWidth / 2;
     }
@@ -244,7 +203,7 @@
     function render(m) {
       m.pop.replaceChildren();
       for (const set of m.sets) {
-        const tabs = set.tabs.filter((b) => !b.hidden);
+        const tabs = set.tabs.filter((b) => !b.hidden && !b.classList.contains("gl-denied"));
         if (!tabs.length) continue;
         const grp = document.createElement("div");
         grp.setAttribute("role", "group");
@@ -303,7 +262,7 @@
         m.trigger.insertAdjacentHTML("beforeend", chevron);
         if (m.trigger.classList.contains("more")) m.trigger.insertAdjacentHTML("beforeend", dots);
         m.trigger.classList.toggle("on", !!active);
-        const none = tabs.every((b) => b.hidden);
+        const none = tabs.every((b) => b.hidden || b.classList.contains("gl-denied"));
         if (m.trigger.hidden !== none) m.trigger.hidden = none; // only on change: this runs from a MutationObserver
         m.trigger.setAttribute("aria-label", active ? `${m.title}: ${active.textContent.trim()}` : m.title);
       }
@@ -323,21 +282,18 @@
     });
     window.addEventListener("resize", close);
     window.addEventListener("scroll", () => { if (openMenu && !sheetMode()) close(); }, { passive: true });
+    return update;
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", polishPage);
   else polishPage();
 
-  // Sign-off asks for a typed name; start it from the name we already know (the page remembers it after).
-  function prefillSignName(n) {
-    try { if (n && !localStorage.getItem("sfbb.signName")) localStorage.setItem("sfbb.signName", n); } catch (e) {}
-  }
-  prefillSignName(name);
+  // Sign-off asks for a typed name; start it from the signed-in person's (devices are shared, so it's
+  // set on every load rather than only the first).
+  mePromise.then((u) => { try { localStorage.setItem("sfbb.signName", u.name); } catch (e) {} });
 
   /* ---------- API calls ---------- */
 
-  function headers(extra) {
-    return Object.assign({ "x-diary-name": encodeURIComponent(name) }, extra);
-  }
+  const headers = (extra) => Object.assign({}, extra);
 
   async function call(url, init) {
     let res;
@@ -348,6 +304,7 @@
     }
     let body = null;
     try { body = await res.json(); } catch (e) { /* not JSON */ }
+    if (res.status === 401) goSignIn();
     if (!res.ok) throw { code: (body && body.code) || "unavailable", message: (body && body.message) || `HTTP ${res.status}` };
     return body;
   }
@@ -426,7 +383,6 @@
   }
 
   async function write(op, body) {
-    await ensureName();
     try { await api(op, body); } finally { refresh(); }
   }
 
@@ -486,10 +442,10 @@
 
   const user = {
     async me() {
-      const n = await ensureName();
-      return { id: "web:" + n, name: n, avatarUrl: "" };
+      const u = await mePromise;
+      return { id: u.recordId, name: u.name, avatarUrl: "" };
     },
-    async can(perm) { return perm === "data.write"; },
+    async can(perm) { return perm === "data.write"; }, // every role records entries; section limits are separate
     async profiles(ids) { return api("profiles", { ids }); },
   };
 
@@ -497,7 +453,6 @@
 
   const assets = {
     async upload(file, opts) {
-      await ensureName();
       const type = (opts && opts.type) || file.type || "application/octet-stream";
       return call("/api/assets", { method: "POST", headers: headers({ "content-type": type }), body: file });
     },
