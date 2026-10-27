@@ -1,4 +1,4 @@
-// Admin page: manage people (add, edit, set temporary passwords, sign out, switch off) and check the sync.
+// Admin page: manage people (add, edit, set temporary passwords, sign out, switch off).
 (() => {
   "use strict";
   const $ = (s) => document.querySelector(s);
@@ -167,28 +167,6 @@
     }
   });
 
-  /* ---------- sync ---------- */
-
-  async function loadStatus() {
-    const s = await api("GET", "/api/admin/status");
-    const ago = s.lastSyncAt ? (Date.now() - s.lastSyncAt) / 60000 : null;
-    const ok = ago != null && ago < 120;
-    const pill = $("#syncPill");
-    pill.className = "pill " + (ok ? "ok" : "warn");
-    pill.textContent = ok ? "Running" : s.lastSyncAt ? "Late" : "Not started";
-    $("#stats").replaceChildren(
-      el("div", { class: "stat" }, el("span", { class: "note", text: "Last sync" }), el("b", { text: when(s.lastSyncAt) })),
-      el("div", { class: "stat" }, el("span", { class: "note", text: "Website changes waiting" }), el("b", { text: String(s.webChangesPending) })),
-      el("div", { class: "stat" }, el("span", { class: "note", text: "Records on the website" }), el("b", { text: String(s.docs) })));
-    $("#syncNote").textContent = !s.syncTokenSet
-      ? "The SYNC_TOKEN secret isn't set in Cloudflare, so Will's Claude can't sync."
-      : !s.lastSyncAt
-        ? "Will's Claude hasn't synced yet. It runs every hour once he's set it up with the sync token."
-        : ok
-          ? "Will's Claude syncs every hour. Changes made here reach his diary at the next sync."
-          : "No sync for over 2 hours. Ask Will to check his scheduled task in Claude.";
-  }
-
   /* ---------- start ---------- */
 
   (async () => {
@@ -199,6 +177,5 @@
     $("#me").textContent = `Signed in as ${user.name}`;
     people = (await api("GET", "/api/admin/users")).users;
     render();
-    loadStatus().catch((e) => { $("#syncNote").textContent = e.message; });
   })().catch((e) => { $("#people").textContent = e.message; });
 })();

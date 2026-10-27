@@ -8,11 +8,8 @@
   "workers_dev": false,
   "preview_urls": false,
 
-  // Builds dist/ from reference/kitchen-diary.html + public/ (runs before dev and deploy).
-  "build": { "command": "node scripts/build.mjs" },
-
   "assets": {
-    "directory": "./dist",
+    "directory": "./public",
     "binding": "ASSETS",
     // Every request goes through the Worker first, so access control lives in one place.
     "run_worker_first": true

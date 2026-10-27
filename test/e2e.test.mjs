@@ -3,7 +3,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { startServer, SYNC_TOKEN } from "./harness.mjs";
+import { startServer, SETUP_CODE } from "./harness.mjs";
 
 const require = createRequire(import.meta.url);
 let chromium;
@@ -48,7 +48,7 @@ test("staff journey on the real page", async () => {
   await page.fill("#scode", "wrong code");
   await page.click("#setup button[type=submit]");
   await page.locator("#serr", { hasText: "setup code isn't right" }).waitFor();
-  await page.fill("#scode", SYNC_TOKEN);
+  await page.fill("#scode", SETUP_CODE);
   await page.click("#setup button[type=submit]");
 
   // The admin page: add a member of staff, with a temporary password created for them.

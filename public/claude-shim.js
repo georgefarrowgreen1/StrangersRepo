@@ -4,17 +4,7 @@
 (() => {
   "use strict";
 
-  /* ---------- theme ---------- */
-
-  // The Liquid Glass theme (public/theme.css). Delete this line to go back to the page's own look.
-  const THEME = "/theme.css";
-
-  // Written during parsing so it lands after the page's <style> (and wins) and blocks the first paint,
-  // so the page never flashes unstyled.
-  if (THEME) {
-    if (document.readyState === "loading") document.write(`<link rel="stylesheet" href="${THEME}">`);
-    else document.body.appendChild(Object.assign(document.createElement("link"), { rel: "stylesheet", href: THEME }));
-  }
+  const THEME = true; // the Liquid Glass theme is loaded by index.html; menus below are built for it
 
   /* ---------- the signed-in person ---------- */
 
@@ -92,20 +82,6 @@
   }
 
   function polishPage() {
-    document.documentElement.lang = document.documentElement.lang || "en-GB";
-    document.title = "Kitchen Diary · Strangers Coffee";
-
-    // Add to Home Screen: name, icon, full-screen launch and status-bar colour.
-    addHead("meta", { name: "theme-color", content: "#edf1f6", media: "(prefers-color-scheme: light)" });
-    addHead("meta", { name: "theme-color", content: "#05070b", media: "(prefers-color-scheme: dark)" });
-    addHead("meta", { name: "apple-mobile-web-app-capable", content: "yes" });
-    addHead("meta", { name: "mobile-web-app-capable", content: "yes" });
-    addHead("meta", { name: "apple-mobile-web-app-title", content: "Kitchen Diary" });
-    addHead("meta", { name: "apple-mobile-web-app-status-bar-style", content: "default" });
-    addHead("link", { rel: "apple-touch-icon", href: "/icon-180.png" });
-    addHead("link", { rel: "icon", type: "image/png", href: "/icon-192.png" });
-    addHead("link", { rel: "manifest", href: "/manifest.webmanifest" });
-
     // The section buttons act as tabs (they carry aria-selected), so give them tab roles.
     document.querySelectorAll("nav.tabs .grp").forEach((g) => {
       g.setAttribute("role", "tablist");

@@ -1,7 +1,6 @@
-// Admin API (/api/admin/*): manage accounts and check the sync. Admins only (enforced in index.ts).
+// Admin API (/api/admin/*): manage accounts. Admins only (enforced in index.ts).
 import { ROLES, Role, User, UserRow, checkPassword, checkUsername, cleanName, hashPassword, nameKey, newId, tempPassword, usernameFrom } from "./auth";
 import { ApiError, Env, SQL_NOW_MS, invalid, json, readJson } from "./http";
-import { isSynced } from "./paths";
 
 function listItem(r: UserRow) {
   return {
@@ -124,19 +123,10 @@ export async function handleAdmin(req: Request, env: Env, route: string, admin: 
     return json({ user: listItem(await getRow(env, row.id)), ...(body.password === "generate" ? { password: passwordOut } : {}) });
   }
 
-  // GET /api/admin/status: is Will's sync running?
+  // GET /api/admin/status: how much is in the diary.
   if (route === "status" && req.method === "GET") {
-    const [docs, meta, pending] = await env.DB.batch<any>([
-      env.DB.prepare("SELECT COUNT(*) AS n FROM docs WHERE deleted = 0"),
-      env.DB.prepare("SELECT v FROM meta WHERE k = 'lastApplyAt'"),
-      env.DB.prepare("SELECT path FROM docs WHERE source = 'web'"),
-    ]);
-    return json({
-      docs: docs.results[0].n,
-      lastSyncAt: meta.results[0]?.v || null,
-      webChangesPending: (pending.results as { path: string }[]).filter((r) => isSynced(r.path)).length,
-      syncTokenSet: !!env.SYNC_TOKEN,
-    });
+    const docs = await env.DB.prepare("SELECT COUNT(*) AS n FROM docs WHERE deleted = 0").first<{ n: number }>();
+    return json({ docs: docs?.n ?? 0 });
   }
 
   throw new ApiError(404, "not_found", "Unknown admin route.");

@@ -1,31 +1,19 @@
 import { User, sessionUser } from "./auth";
-import { ApiError, Env, safeEqual } from "./http";
+import { ApiError, Env } from "./http";
 
 /** Who is making a request. */
 export type Caller =
-  | { kind: "sync" } // Will's Claude, holding the sync token
   | { kind: "user"; user: User } // a signed-in member of staff
   | { kind: "anon" }; // not signed in
 
 /**
  * The one place access is decided. Every request passes through here before routing.
  *
- * /api/sync/* needs the sync token. Everything else identifies the person from their session cookie
- * (username + password sign-in, see auth.ts); index.ts then decides what an anonymous caller may reach (only the
- * sign-in page and its assets) and what each role may do (see canWrite and canOpenTab below).
+ * People are identified by their session cookie (username + password sign-in, see auth.ts); index.ts then
+ * decides what an anonymous caller may reach (only the sign-in page and its assets) and what each role may
+ * do (see canWrite below).
  */
-export async function authorize(req: Request, env: Env, url: URL): Promise<Caller | Response> {
-  if (url.pathname.startsWith("/api/sync/")) {
-    const header = req.headers.get("authorization") || "";
-    const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
-    if (!env.SYNC_TOKEN || !token || !(await safeEqual(token, env.SYNC_TOKEN))) {
-      return new Response(JSON.stringify({ code: "unauthenticated", message: "Missing or wrong sync token." }), {
-        status: 401,
-        headers: { "content-type": "application/json", "www-authenticate": "Bearer" },
-      });
-    }
-    return { kind: "sync" };
-  }
+export async function authorize(req: Request, env: Env): Promise<Caller> {
   const user = await sessionUser(req, env);
   return user ? { kind: "user", user } : { kind: "anon" };
 }

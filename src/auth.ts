@@ -164,7 +164,7 @@ function missingTokenMessage(env: Env): string {
   const seen = Object.entries(env as unknown as Record<string, unknown>)
     .filter(([, v]) => typeof v === "string")
     .map(([k]) => JSON.stringify(k));
-  return "The site can't see a SYNC_TOKEN secret, so there's no setup code yet. Add it in Cloudflare under " +
+  return "The site can't see a SETUP_CODE secret, so there's no setup code yet. Add it in Cloudflare under " +
     "Workers & Pages → strangers-kitchen-diary → Settings → Variables and Secrets (not the Build section). " +
     `Settings the site can see: ${seen.length ? seen.join(", ") : "none"}.`;
 }
@@ -179,12 +179,15 @@ async function userCount(env: Env): Promise<number> {
   return (await env.DB.prepare("SELECT COUNT(*) AS n FROM users").first<{ n: number }>())?.n ?? 0;
 }
 
+/** The setup code: the SETUP_CODE secret (SYNC_TOKEN, its older name, still works). */
+const setupCode = (env: Env) => env.SETUP_CODE || env.SYNC_TOKEN || "";
+
 async function checkSetupCode(env: Env, ip: string, code: unknown): Promise<void> {
-  if (!env.SYNC_TOKEN) throw new ApiError(503, "no_setup_code", missingTokenMessage(env));
+  if (!setupCode(env)) throw new ApiError(503, "no_setup_code", missingTokenMessage(env));
   if ((await ipFailures(env, ip)) >= IP_FAILS) throw new ApiError(429, "rate_limited", "Too many attempts. Wait 15 minutes.");
-  if (typeof code !== "string" || !(await safeEqual(code.trim(), env.SYNC_TOKEN))) {
+  if (typeof code !== "string" || !(await safeEqual(code.trim(), setupCode(env)))) {
     await recordIpFailure(env, ip);
-    throw new ApiError(403, "wrong_setup_code", "That setup code isn't right. It's the sync token you set in Cloudflare.");
+    throw new ApiError(403, "wrong_setup_code", "That setup code isn't right. It's the secret saved in Cloudflare.");
   }
 }
 
@@ -231,7 +234,7 @@ export async function handleAuth(req: Request, env: Env, route: string, current:
     return json({ ok: true }, 200, { "set-cookie": clearCookie });
   }
 
-  // First admin. Guarded by the setup code (the sync token), which only the host has.
+  // First admin. Guarded by the setup code, which only the host has.
   if (route === "setup" && req.method === "POST") {
     const body = await readJson<any>(req, 4096);
     if ((await userCount(env)) > 0) throw new ApiError(409, "already_set_up", "An admin already exists. Sign in instead.");

@@ -189,7 +189,7 @@ export async function poll(env: Env, body: { since?: number; queries?: PollQuery
   return { seq, results };
 }
 
-/** Names for the "by" ids on records: web:<name> → name; u_… → config/people (written by the sync). */
+/** Names for the "by" ids on records: web:<name> → name; u_… (people from the old Claude diary) → config/people. */
 export async function profiles(env: Env, ids: unknown) {
   if (!Array.isArray(ids)) throw invalid("ids must be an array.");
   const out: Record<string, { name: string }> = {};

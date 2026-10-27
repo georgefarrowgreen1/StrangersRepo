@@ -4,18 +4,18 @@
 import { Env } from "./http";
 
 const SCHEMA = [
-  // Every diary document, stored by path (see docs/data-model.md and docs/sync.md).
+  // Every diary document, stored by path (see docs/data-model.md).
   `CREATE TABLE IF NOT EXISTS docs (
     path        TEXT PRIMARY KEY,           -- e.g. 'sites/cafe/days/2026-10-27'
     collection  TEXT NOT NULL,              -- e.g. 'sites/cafe/days'
     doc_id      TEXT NOT NULL,              -- e.g. '2026-10-27'
     data        TEXT,                       -- JSON; NULL when deleted
     updated_at  INTEGER NOT NULL,           -- ms since epoch
-    source      TEXT NOT NULL,              -- 'web' (edited on the website) or 'claude' (written by sync)
-    deleted     INTEGER NOT NULL DEFAULT 0, -- tombstone, so the sync can see website deletions
-    claude_data TEXT,                       -- the JSON Claude last applied for this path (NULL = Claude had no doc)
+    source      TEXT NOT NULL,              -- 'web'; 'claude' on rows copied from the old Claude diary
+    deleted     INTEGER NOT NULL DEFAULT 0, -- tombstone (deletes are kept as rows; the page's polling relies on it)
+    claude_data TEXT,                       -- unused since the Claude sync was removed
     seq         INTEGER NOT NULL DEFAULT 0, -- change counter used by the page's live polling
-    updated_by  TEXT                        -- 'web:<name>' or 'sync', for auditing
+    updated_by  TEXT                        -- 'web:<name>', for auditing
   )`,
   "CREATE INDEX IF NOT EXISTS docs_collection ON docs(collection, deleted)",
   "CREATE INDEX IF NOT EXISTS docs_web_changes ON docs(source, updated_at)",

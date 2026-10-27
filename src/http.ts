@@ -2,7 +2,8 @@ export interface Env {
   DB: D1Database;
   FILES: KVNamespace;
   ASSETS: Fetcher;
-  SYNC_TOKEN?: string;
+  SETUP_CODE?: string; // creates the first admin and resets an admin password
+  SYNC_TOKEN?: string; // older name for SETUP_CODE, still accepted
   WRITE_LIMIT_PER_15_MIN?: string;
 }
 
@@ -51,6 +52,5 @@ export async function safeEqual(a: string, b: string): Promise<boolean> {
   return crypto.subtle.timingSafeEqual(da, db);
 }
 
-/** SQL expression for the database's current time in ms. Using the database clock (rather than the
- * Worker's) keeps updated_at ordered with the sync's `now`, because D1 runs statements one at a time. */
+/** SQL expression for the database's current time in ms. */
 export const SQL_NOW_MS = "CAST(ROUND((julianday('now') - 2440587.5) * 86400000) AS INTEGER)";

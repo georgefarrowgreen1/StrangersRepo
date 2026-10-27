@@ -8,16 +8,12 @@ export const COLLECTIONS = [
   "suppliers", "contacts", "staff", "reviews", "plans", "onboarding", "inspections",
 ];
 
-/** Collections that are never synced with Claude (docs/sync.md). */
-const UNSYNCED = new Set(["allergenDocs"]);
-
-/** Single documents outside the per-site collections. config/people and config/sync are sync-only. */
-const CONFIG_DOCS = new Set(["config/shared", "config/people", "config/sync"]);
+/** Single documents outside the per-site collections. config/people holds names for people who recorded in
+ * the old Claude diary (read-only now). */
+const CONFIG_DOCS = new Set(["config/shared", "config/people"]);
 
 const SITE_COLLECTIONS = new Set(SITE_PREFIXES.flatMap((p) => COLLECTIONS.map((c) => p + c)));
 
-/** Every collection the sync may list in a manifest. */
-export const SYNCED_COLLECTIONS = [...SITE_COLLECTIONS].filter((c) => !UNSYNCED.has(c.split("/").pop()!));
 
 const ID_RE = /^[^/\u0000-\u001f\u007f]{1,200}$/;
 
@@ -46,15 +42,8 @@ export function parseCollectionPath(path: unknown): string {
 /** Paths the website itself (the page) may read and write. */
 export function parseWebDocPath(path: unknown, mode: "read" | "write"): DocPath {
   const p = parseDocPath(path);
-  if (p.path === "config/sync") throw invalid("config/sync is only used by the sync.");
-  if (mode === "write" && p.path === "config/people") throw invalid("config/people is written only by the sync.");
+  if (mode === "write" && p.path === "config/people") throw invalid("config/people is read-only.");
   return p;
-}
-
-export function isSynced(path: string): boolean {
-  if (path === "config/sync") return false;
-  const parts = path.split("/");
-  return !UNSYNCED.has(parts[parts.length - 2]);
 }
 
 export const MAX_DOC_BYTES = 256 * 1024;

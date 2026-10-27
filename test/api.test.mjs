@@ -1,7 +1,7 @@
 // API tests against `wrangler dev` with a fresh local database. Run with `npm test`.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { startServer, SYNC_TOKEN } from "./harness.mjs";
+import { startServer, SETUP_CODE } from "./harness.mjs";
 
 let srv, ADMIN, STAFF;
 before(async () => {
@@ -17,7 +17,7 @@ const cookieOf = (res) => (res.headers.get("set-cookie") || "").split(";")[0];
 const postJson = (url, body) => fetch(`${srv.base}${url}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 
 async function setupAdmin(name, username, password) {
-  const r = await postJson("/api/auth/setup", { name, username, password, code: SYNC_TOKEN });
+  const r = await postJson("/api/auth/setup", { name, username, password, code: SETUP_CODE });
   assert.equal(r.status, 200, await r.clone().text());
   return cookieOf(r);
 }
@@ -44,12 +44,6 @@ async function admin(method, route, body, cookie = ADMIN) {
   const r = await fetch(`${srv.base}/api/admin/${route}`, { method, headers: { "content-type": "application/json", cookie }, body: body && JSON.stringify(body) });
   return { status: r.status, body: await r.json() };
 }
-async function sync(method, route, body, token = SYNC_TOKEN) {
-  const headers = { "content-type": "application/json" };
-  if (token) headers.authorization = `Bearer ${token}`;
-  const r = await fetch(`${srv.base}/api/sync/${route}`, { method, headers, body: body && JSON.stringify(body) });
-  return { status: r.status, body: await r.json() };
-}
 
 test("signed out: only the sign-in page is reachable", async () => {
   const home = await fetch(srv.base + "/", { redirect: "manual" });
@@ -73,7 +67,7 @@ test("page is served with the shim and noindex once signed in", async () => {
   assert.equal(r.status, 200);
   const html = await r.text();
   assert.match(html, /<meta name="robots" content="noindex,nofollow">/);
-  assert.match(html, /<script src="\/claude-shim.js"><\/script>\n<script>/);
+  assert.match(html, /<script src="\/claude-shim.js"><\/script>\n<script src="\/app.js"><\/script>/);
   assert.equal(r.headers.get("x-robots-tag"), "noindex, nofollow");
   assert.equal(r.headers.get("cache-control"), "private, no-store");
   assert.match(await (await fetch(srv.base + "/robots.txt")).text(), /Disallow: \//);
@@ -81,7 +75,7 @@ test("page is served with the shim and noindex once signed in", async () => {
 });
 
 test("setup works once, and needs the setup code", async () => {
-  const again = await postJson("/api/auth/setup", { name: "Eve", username: "eve", password: "eve-pass-1", code: SYNC_TOKEN });
+  const again = await postJson("/api/auth/setup", { name: "Eve", username: "eve", password: "eve-pass-1", code: SETUP_CODE });
   assert.equal(again.status, 409);
   const me = await (await fetch(srv.base + "/api/auth/me", { headers: { cookie: ADMIN } })).json();
   assert.deepEqual(me.user, { id: me.user.id, name: "Sam Patel", role: "admin", recordId: "web:Sam Patel" });
@@ -168,8 +162,8 @@ test("admin: add, rename, temporary password and switch off", async () => {
 
 test("an admin who forgot their password can set a new one with the setup code", async () => {
   assert.equal((await postJson("/api/auth/recover", { username: "sam.patel", password: "brand-new-1", code: "nope" })).status, 403);
-  assert.equal((await postJson("/api/auth/recover", { username: "alex", password: "brand-new-1", code: SYNC_TOKEN })).status, 404, "staff can't use it");
-  const r = await postJson("/api/auth/recover", { username: "sam.patel", password: "brand-new-1", code: SYNC_TOKEN });
+  assert.equal((await postJson("/api/auth/recover", { username: "alex", password: "brand-new-1", code: SETUP_CODE })).status, 404, "staff can't use it");
+  const r = await postJson("/api/auth/recover", { username: "sam.patel", password: "brand-new-1", code: SETUP_CODE });
   assert.equal(r.status, 200);
   assert.equal((await db("get", { path: "days/x" })).status, 401, "old admin sessions end");
   ADMIN = await login("sam.patel", "brand-new-1");
@@ -183,7 +177,7 @@ test("admin: the last admin can't be demoted or switched off", async () => {
   assert.equal((await admin("PATCH", `users/${me.id}`, { active: false })).body.code, "last_admin");
   const st = await admin("GET", "status");
   assert.equal(st.status, 200);
-  assert.equal(st.body.syncTokenSet, true);
+  assert.equal(typeof st.body.docs, "number");
 });
 
 test("set, get and deep-merging update", async () => {
@@ -266,10 +260,9 @@ test("poll handles as many subscriptions as the page opens", async () => {
   assert.equal(r.body.results["sites/cafe/days"].docs[0].id, "2026-10-27", "newest day first");
 });
 
-test("profiles resolves web names and synced Claude names", async () => {
-  await sync("POST", "apply", { pulledAt: Date.now(), docs: [{ path: "config/people", data: { u_will: "Will" } }] });
-  const r = await db("profiles", { ids: ["web:Sam Patel", "u_will", "u_unknown"] });
-  assert.deepEqual(r.body, { "web:Sam Patel": { name: "Sam Patel" }, u_will: { name: "Will" }, u_unknown: { name: "" } });
+test("profiles resolves names on records", async () => {
+  const r = await db("profiles", { ids: ["web:Sam Patel", "u_unknown"] });
+  assert.deepEqual(r.body, { "web:Sam Patel": { name: "Sam Patel" }, u_unknown: { name: "" } });
 });
 
 test("PDF upload, serve and delete", async () => {
@@ -291,73 +284,6 @@ test("PDF upload, serve and delete", async () => {
   const del = await fetch(`${srv.base}/api/assets/${info.id}`, { method: "DELETE", headers: { cookie: ADMIN } });
   assert.deepEqual(await del.json(), { deleted: true });
   assert.equal((await fetch(srv.base + info.url, { headers: { cookie: ADMIN } })).status, 404);
-});
-
-test("sync routes need the token", async () => {
-  for (const [m, route] of [["GET", "changes?since=0"], ["GET", "status"], ["POST", "apply"], ["POST", "manifest"]]) {
-    assert.equal((await sync(m, route, m === "POST" ? {} : undefined, null)).status, 401, route);
-    assert.equal((await sync(m, route, m === "POST" ? {} : undefined, "wrong")).status, 401, route);
-  }
-});
-
-test("sync: changes, apply (with skip), manifest", async () => {
-  const c1 = (await sync("GET", "changes?since=0")).body;
-  assert.ok(c1.now > 0);
-  const paths = c1.changes.map((c) => c.path);
-  assert.ok(paths.includes("sites/cafe/days/2026-10-27"));
-  assert.ok(paths.includes("sites/factory/cleaning/job1"));
-  const del = c1.changes.find((c) => c.path === "sites/asg/days/2026-09-03");
-  assert.equal(del.deleted, true);
-  assert.equal(del.data, null);
-  assert.ok(c1.changes.every((c) => !c.path.includes("allergenDocs") && c.base === null));
-  const pulledAt = c1.now;
-
-  // A website edit made after Claude pulled is protected from the push.
-  await new Promise((r) => setTimeout(r, 5));
-  await db("set", { path: "sites/cafe/staff/s1", data: { name: "Late edit" } });
-
-  const applied = (await sync("POST", "apply", {
-    pulledAt,
-    docs: [
-      { path: "sites/cafe/days/2026-10-27", data: { date: "2026-10-27", signed: { by: "u_will", at: 1, name: "Will" } } },
-      { path: "sites/cafe/staff/s1", data: { name: "Claude version" } },
-      { path: "sites/asg/days/2026-09-02", deleted: true },
-      { path: "sites/factory/cleaning/job1", data: { name: "Mop floor", freq: "daily" } }, // identical: quiet
-      { path: "sites/cafe/allergenDocs/x", data: { title: "no" } },
-    ],
-  })).body;
-  assert.equal(applied.applied, 3); // overwrite, delete, identical
-  assert.deepEqual(applied.skipped, ["sites/cafe/staff/s1"]);
-  assert.equal(applied.rejected.length, 1);
-
-  assert.equal((await db("get", { path: "sites/cafe/days/2026-10-27" })).body.data.signed.name, "Will");
-  assert.equal((await db("get", { path: "sites/asg/days/2026-09-02" })).body.exists, false);
-  assert.equal((await db("get", { path: "sites/cafe/staff/s1" })).body.data.name, "Late edit");
-
-  // Only the protected web edit is still pending; its base is null (Claude never had it).
-  const c2 = (await sync("GET", `changes?since=${pulledAt}`)).body;
-  assert.deepEqual(c2.changes.map((c) => c.path), ["sites/cafe/staff/s1"]);
-
-  // A later web edit of a Claude-applied doc carries Claude's version as base.
-  await db("update", { path: "sites/cafe/days/2026-10-27", patch: { problems: { text: "Fridge 2 warm" } } });
-  const c3 = (await sync("GET", `changes?since=${c2.now}`)).body;
-  assert.equal(c3.changes[0].base.signed.name, "Will");
-  assert.equal(c3.changes[0].data.problems.text, "Fridge 2 warm");
-
-  // Manifest removes docs Claude doesn't have, but not web edits newer than pulledAt.
-  await db("set", { path: "sites/factory/cleaning/job2", data: { name: "Old job" } });
-  const c4 = (await sync("GET", "changes?since=0")).body;
-  await db("set", { path: "sites/factory/cleaning/job3", data: { name: "Brand new on web" } });
-  const m = (await sync("POST", "manifest", {
-    pulledAt: c4.now, collections: ["sites/factory/cleaning"], paths: ["sites/factory/cleaning/job1"],
-  })).body;
-  assert.deepEqual(m.removed, ["sites/factory/cleaning/job2"]);
-  const left = (await db("query", { path: "sites/factory/cleaning" })).body.docs.map((d) => d.id).sort();
-  assert.deepEqual(left, ["job1", "job3"]);
-  assert.equal((await sync("POST", "manifest", { pulledAt: 0, collections: ["sites/cafe/allergenDocs"], paths: [] })).body.code, "invalid_argument");
-
-  const st = (await sync("GET", "status")).body;
-  assert.ok(st.docs > 0 && st.lastApplyAt > 0 && st.webChangesPending > 0);
 });
 
 test("writes are rate limited per IP", async () => {

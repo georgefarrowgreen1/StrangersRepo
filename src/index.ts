@@ -1,5 +1,5 @@
 // Strangers Coffee Kitchen Diary staff site.
-// Serves the diary page unchanged (plus claude-shim.js) and the API the shim and Will's sync use.
+// Serves the diary page (public/index.html) and the API it uses through claude-shim.js.
 import { authorize, isPublicAsset, limitWrites, recordId, requireUser } from "./access";
 import { handleAdmin } from "./admin";
 import { handleAuth } from "./auth";
@@ -7,7 +7,6 @@ import { deleteAsset, serveBlob, uploadAsset } from "./assets";
 import { WRITE_OPS, handleDb } from "./docs";
 import { ApiError, Env, errorResponse, json } from "./http";
 import { ensureSchema } from "./schema";
-import { handleSync } from "./sync";
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -42,10 +41,8 @@ async function route(req: Request, env: Env, ctx: ExecutionContext, url: URL): P
   if (isGet && isPublicAsset(p)) return env.ASSETS.fetch(req);
 
   await ensureSchema(env);
-  const caller = await authorize(req, env, url);
-  if (caller instanceof Response) return caller;
+  const caller = await authorize(req, env);
 
-  if (p.startsWith("/api/sync/")) return handleSync(req, env, p.slice("/api/sync/".length), url);
   if (p.startsWith("/api/auth/")) return handleAuth(req, env, p.slice("/api/auth/".length), caller.kind === "user" ? caller.user : null);
 
   // Everything below needs a signed-in person.

@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "node:net";
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-export const SYNC_TOKEN = "test-sync-token-0123456789abcdef0123456789abcdef";
+export const SETUP_CODE = "test-setup-code-0123456789abcdef0123456789abcdef";
 const WRANGLER = join(ROOT, "node_modules", ".bin", "wrangler");
 
 function freePort() {
@@ -29,7 +29,7 @@ export async function startServer({ writeLimit, preSql } = {}) {
   }
   const port = await freePort();
   const args = ["dev", "--local", "--port", String(port), "--ip", "127.0.0.1", "--persist-to", state,
-    "--var", `SYNC_TOKEN:${SYNC_TOKEN}`, "--show-interactive-dev-session=false"];
+    "--var", `SETUP_CODE:${SETUP_CODE}`, "--show-interactive-dev-session=false"];
   if (writeLimit) args.push("--var", `WRITE_LIMIT_PER_15_MIN:${writeLimit}`);
   const proc = spawn(WRANGLER, args, { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, CI: "1" } });
   let log = "";
