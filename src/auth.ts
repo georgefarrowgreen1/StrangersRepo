@@ -24,9 +24,13 @@ export interface UserRow extends User {
   created_by: string | null;
   updated_at: number;
   last_login_at: number | null;
+  quick_hash: string | null; // quick-switch PIN (see "quick switching" below)
+  quick_salt: string | null;
 }
 
 const COOKIE = "sfbb_session";
+const DEVICE_COOKIE = "sfbb_device"; // marks a device someone has signed in on with a password
+const DEVICE_MS = 180 * 24 * 3600 * 1000;
 const SESSION_MS = 30 * 24 * 3600 * 1000;
 const MAX_FAILS = 5; // wrong passwords in a row before the account locks
 const LOCK_MS = 10 * 60 * 1000;
@@ -123,6 +127,31 @@ export async function sessionCookie(env: Env, user: { id: string; session_ver: n
 }
 
 const clearCookie = `${COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
+
+/** A device someone has signed in on with a username and password. Quick switching (a 4-digit PIN) only
+ * works on such a device, so a PIN alone can't sign anyone in from elsewhere. */
+async function deviceCookie(env: Env): Promise<string> {
+  const payload = b64url(enc.encode(JSON.stringify({ d: newId(8), e: Date.now() + DEVICE_MS })));
+  const sig = b64url(new Uint8Array(await crypto.subtle.sign("HMAC", await sessionKey(env), enc.encode("device." + payload))));
+  return `${DEVICE_COOKIE}=${payload}.${sig}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${DEVICE_MS / 1000}`;
+}
+
+export async function trustedDevice(req: Request, env: Env): Promise<boolean> {
+  const m = (req.headers.get("cookie") || "").match(new RegExp(`(?:^|;\\s*)${DEVICE_COOKIE}=([A-Za-z0-9_-]+)\\.([A-Za-z0-9_-]+)`));
+  if (!m) return false;
+  try {
+    if (!(await crypto.subtle.verify("HMAC", await sessionKey(env), unb64url(m[2]), enc.encode("device." + m[1])))) return false;
+    const d = JSON.parse(new TextDecoder().decode(unb64url(m[1])));
+    return typeof d.e === "number" && d.e > Date.now();
+  } catch {
+    return false;
+  }
+}
+
+/** Response headers for a password sign-in: the session, and this device marked as trusted. */
+async function signedIn(env: Env, user: { id: string; session_ver: number }): Promise<[string, string][]> {
+  return [["set-cookie", await sessionCookie(env, user)], ["set-cookie", await deviceCookie(env)]];
+}
 
 /** The signed-in person, or null. Checks the signature, expiry, and that the account is still active and
  * hasn't been signed out everywhere since (session_ver). */
@@ -227,7 +256,12 @@ export async function handleAuth(req: Request, env: Env, route: string, current:
   const ip = req.headers.get("cf-connecting-ip") || "local";
 
   if (route === "me" && req.method === "GET") {
-    return json({ user: current ? publicUser(current) : null, setupNeeded: (await userCount(env)) === 0 });
+    const quick = current ? await env.DB.prepare("SELECT quick_hash IS NOT NULL AS has FROM users WHERE id = ?").bind(current.id).first<{ has: number }>() : null;
+    return json({
+      user: current ? { ...publicUser(current), quickPin: !!quick?.has } : null,
+      setupNeeded: (await userCount(env)) === 0,
+      quickSwitch: await trustedDevice(req, env), // this device can switch person with a quick PIN
+    });
   }
 
   if (route === "logout" && req.method === "POST") {
@@ -249,7 +283,7 @@ export async function handleAuth(req: Request, env: Env, route: string, current:
        SELECT ?, ?, ?, ?, 'admin', ?, ?, ${SQL_NOW_MS}, 'setup', ${SQL_NOW_MS}, ${SQL_NOW_MS} WHERE NOT EXISTS (SELECT 1 FROM users)`,
     ).bind(id, name, nameKey(name), username, hash, salt).run();
     if (!res.meta.changes) throw new ApiError(409, "already_set_up", "An admin already exists. Sign in instead.");
-    return json({ user: publicUser({ id, name, role: "admin" }) }, 200, { "set-cookie": await sessionCookie(env, { id, session_ver: 1 }) });
+    return json({ user: publicUser({ id, name, role: "admin" }) }, 200, await signedIn(env, { id, session_ver: 1 }));
   }
 
   // An admin who has forgotten their password sets a new one with the setup code.
@@ -266,7 +300,7 @@ export async function handleAuth(req: Request, env: Env, route: string, current:
       `UPDATE users SET pin_hash = ?, pin_salt = ?, must_change = 0, failed = 0, locked_until = 0, session_ver = session_ver + 1,
          updated_at = ${SQL_NOW_MS}, last_login_at = ${SQL_NOW_MS} WHERE id = ?`,
     ).bind(hash, salt, row.id).run();
-    return json({ user: publicUser(row) }, 200, { "set-cookie": await sessionCookie(env, { id: row.id, session_ver: row.session_ver + 1 }) });
+    return json({ user: publicUser(row) }, 200, await signedIn(env, { id: row.id, session_ver: row.session_ver + 1 }));
   }
 
   // Sign in. A temporary password (set by an admin, or carried over from a PIN) signs nobody in: the
@@ -279,7 +313,7 @@ export async function handleAuth(req: Request, env: Env, route: string, current:
       return json({ mustChange: true, name: row.name });
     }
     await env.DB.prepare(`UPDATE users SET failed = 0, locked_until = 0, last_login_at = ${SQL_NOW_MS} WHERE id = ?`).bind(row.id).run();
-    return json({ user: publicUser(row) }, 200, { "set-cookie": await sessionCookie(env, row) });
+    return json({ user: publicUser(row) }, 200, await signedIn(env, row));
   }
 
   // Change password (needs the current one). Ends the person's other sessions and signs them in here.
@@ -293,7 +327,68 @@ export async function handleAuth(req: Request, env: Env, route: string, current:
       `UPDATE users SET pin_hash = ?, pin_salt = ?, must_change = 0, failed = 0, locked_until = 0, session_ver = session_ver + 1,
          updated_at = ${SQL_NOW_MS}, last_login_at = ${SQL_NOW_MS} WHERE id = ?`,
     ).bind(hash, salt, row.id).run();
-    return json({ user: publicUser(row) }, 200, { "set-cookie": await sessionCookie(env, { id: row.id, session_ver: row.session_ver + 1 }) });
+    return json({ user: publicUser(row) }, 200, await signedIn(env, { id: row.id, session_ver: row.session_ver + 1 }));
+  }
+
+  /* ---------- quick switching ----------
+   * On a shared device where someone has signed in with a password, staff and managers can switch to
+   * themselves with a 4-digit PIN. Admins always use their password. Wrong PINs count towards the same
+   * 5-tries lock as passwords, and per-IP limits apply. */
+
+  // Set or remove your own quick PIN: {pin: "1234"} or {pin: null}.
+  if (route === "pin" && req.method === "POST") {
+    if (!current) throw new ApiError(401, "unauthenticated", "Sign in to continue.");
+    if (current.role === "admin") throw new ApiError(403, "permission_denied", "Admins sign in with their password, so they don't have a quick PIN.");
+    const body = await readJson<any>(req, 1024);
+    if (body.pin === null) {
+      await env.DB.prepare(`UPDATE users SET quick_hash = NULL, quick_salt = NULL, updated_at = ${SQL_NOW_MS} WHERE id = ?`).bind(current.id).run();
+      return json({ ok: true });
+    }
+    if (typeof body.pin !== "string" || !/^\d{4}$/.test(body.pin)) throw invalid("A quick PIN is 4 digits.");
+    if (/^(\d)\1{3}$|^(0123|1234|2345|3456|4567|5678|6789|9876|8765|7654|6543|5432|4321|3210)$/.test(body.pin)) {
+      throw invalid("Choose a PIN that's harder to guess than repeated or running digits.");
+    }
+    const { hash, salt } = await hashPassword(body.pin);
+    await env.DB.prepare(`UPDATE users SET quick_hash = ?, quick_salt = ?, updated_at = ${SQL_NOW_MS} WHERE id = ?`).bind(hash, salt, current.id).run();
+    return json({ ok: true });
+  }
+
+  // Who can switch in on this device: names only, for the "Switch person" list.
+  if (route === "people" && req.method === "GET") {
+    if (!(await trustedDevice(req, env))) return json({ people: [] });
+    const { results } = await env.DB.prepare(
+      "SELECT id, name FROM users WHERE active = 1 AND role != 'admin' AND quick_hash IS NOT NULL AND must_change = 0 ORDER BY name_key",
+    ).all<{ id: string; name: string }>();
+    return json({ people: results });
+  }
+
+  // Switch to someone with their quick PIN: {id, pin}.
+  if (route === "switch" && req.method === "POST") {
+    if (!(await trustedDevice(req, env))) {
+      throw new ApiError(403, "untrusted_device", "Quick switching only works on a device someone has signed in on with a password.");
+    }
+    if ((await ipFailures(env, ip)) >= IP_FAILS) throw new ApiError(429, "rate_limited", "Too many wrong attempts from this connection. Wait 15 minutes.");
+    const body = await readJson<any>(req, 1024);
+    const row = typeof body.id === "string" ? await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(body.id).first<UserRow>() : null;
+    if (!row || !row.active || row.role === "admin" || !row.quick_hash || row.must_change) {
+      throw new ApiError(404, "not_found", "That person can't switch in with a PIN. Sign in with a password instead.");
+    }
+    const now = Date.now();
+    if (row.locked_until > now) {
+      const mins = Math.ceil((row.locked_until - now) / 60000);
+      throw new ApiError(423, "locked", `Too many wrong tries. Try again in ${mins} minute${mins === 1 ? "" : "s"}, or sign in with a password.`);
+    }
+    const pin = typeof body.pin === "string" ? body.pin : "";
+    if (!(await passwordMatches(pin, { pin_hash: row.quick_hash, pin_salt: row.quick_salt || "" }))) {
+      const failed = row.failed + 1, lock = failed >= MAX_FAILS;
+      await env.DB.prepare("UPDATE users SET failed = ?, locked_until = ? WHERE id = ?").bind(lock ? 0 : failed, lock ? now + LOCK_MS : row.locked_until, row.id).run();
+      await recordIpFailure(env, ip);
+      if (lock) throw new ApiError(423, "locked", "Too many wrong tries. Try again in 10 minutes, or sign in with a password.");
+      const left = MAX_FAILS - failed;
+      throw new ApiError(401, "wrong_pin", `Wrong PIN. ${left} ${left === 1 ? "try" : "tries"} left.`);
+    }
+    await env.DB.prepare(`UPDATE users SET failed = 0, locked_until = 0, last_login_at = ${SQL_NOW_MS} WHERE id = ?`).bind(row.id).run();
+    return json({ user: publicUser(row) }, 200, { "set-cookie": await sessionCookie(env, row) });
   }
 
   throw new ApiError(404, "not_found", "Unknown route.");

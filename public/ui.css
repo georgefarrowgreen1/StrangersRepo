@@ -400,3 +400,11 @@ button.step.on{color:var(--ok)} button.step.now{color:var(--accent)}
 /* When the sign-off button floats above the tab bar, the toast sits above it. */
 body.hasfab .toast{bottom:calc(env(safe-area-inset-bottom,0px) + 160px)}
 @media (min-width:1024px){body.hasfab .toast{bottom:92px}}
+
+/* Connection status: shown only while offline or saving changes made offline. */
+.conn{position:fixed;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 62px);z-index:25;max-width:calc(100vw - 32px);box-sizing:border-box;
+  padding:7px 14px;border-radius:99px;font-size:13.5px;font-weight:650;background:var(--warn-bg);color:var(--warn);border:1px solid color-mix(in srgb,var(--warn) 30%,transparent);
+  box-shadow:var(--lift);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (min-width:1024px){.conn{top:14px;left:calc(50% + 143px)}}
+@media (prefers-reduced-motion:no-preference){.conn:not([hidden]){animation:conn-in .3s cubic-bezier(.2,.8,.2,1)}@keyframes conn-in{from{opacity:0;transform:translate(-50%,-8px)}}}
+#peopleNote a{color:var(--accent);font-weight:600}

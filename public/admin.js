@@ -74,7 +74,8 @@
             el("span", { class: "pill" + (p.role === "admin" ? " ok" : p.role === "manager" ? " warn" : ""), text: ROLE[p.role] }),
             !p.active ? el("span", { class: "pill bad", text: "Switched off" }) : null,
             p.locked ? el("span", { class: "pill bad", text: "Locked" }) : null,
-            p.active && p.mustChange ? el("span", { class: "pill warn", text: "Temporary password" }) : null),
+            p.active && p.mustChange ? el("span", { class: "pill warn", text: "Temporary password" }) : null,
+            p.active && p.quickPin ? el("span", { class: "pill qp", text: "Quick PIN" }) : null),
           chev()));
       if (open) row.appendChild(editor(p, isMe));
       box.appendChild(row);
@@ -183,6 +184,28 @@
     }
   });
 
+  /* ---------- backups ---------- */
+
+  const kb = (n) => (n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB");
+  async function renderBackups() {
+    const box = $("#backups");
+    let list = [];
+    try { list = (await api("GET", "/api/admin/backups")).backups; } catch (e) { box.replaceChildren(el("p", { class: "err bk", text: e.message })); return; }
+    if (!list.length) { box.replaceChildren(el("div", { class: "bk" }, el("span", { class: "t" }, el("span", { text: "No backups yet. The first runs tonight, or tap Back up now." })))); return; }
+    box.replaceChildren(...list.map((b) => el("div", { class: "bk" },
+      el("span", { class: "t" },
+        el("b", { text: new Date(b.at).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) }),
+        el("span", { text: `${b.docs} records · ${kb(b.bytes)} · ${b.by === "daily" ? "nightly" : "by " + b.by}` })),
+      el("a", { href: `/api/admin/backups/${b.id}`, download: "" }, "Download"))));
+  }
+  $("#backupNow").addEventListener("click", async () => {
+    const btn = $("#backupNow");
+    btn.disabled = true; btn.textContent = "Backing up…";
+    try { await api("POST", "/api/admin/backups"); btn.textContent = "Done"; await renderBackups(); }
+    catch (e) { btn.textContent = "Couldn't back up"; }
+    setTimeout(() => { btn.disabled = false; btn.textContent = "Back up now"; }, 2000);
+  });
+
   /* ---------- start ---------- */
 
   (async () => {
@@ -193,5 +216,6 @@
     $("#me").textContent = "Admin";
     people = (await api("GET", "/api/admin/users")).users;
     render();
+    renderBackups();
   })().catch((e) => { $("#people").textContent = e.message; });
 })();

@@ -1,0 +1,29 @@
+# Runs every test on each push and pull request, so a change that breaks the diary shows a red cross
+# on GitHub before it's merged into main (which Cloudflare deploys).
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Typecheck and API tests
+        run: npm test
+      - name: Install a browser for the site test
+        run: npm install --no-save playwright@1.63.0 && npx playwright install --with-deps chromium
+      - name: Site test in a browser
+        run: npm run test:e2e

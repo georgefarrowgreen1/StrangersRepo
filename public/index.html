@@ -39,7 +39,14 @@
   <div class="list" id="siteList"></div>
   <p class="note">This device remembers the site you choose.</p>
 </div>
+<div class="sheet" id="peopleSheet" role="dialog" aria-modal="true" aria-labelledby="peopleSheetTitle" hidden>
+  <div class="grab" aria-hidden="true"></div>
+  <h2 id="peopleSheetTitle">Who's recording?</h2>
+  <div class="list" id="peopleList"></div>
+  <p class="note" id="peopleNote"></p>
+</div>
 <div class="menu" id="acctMenu" role="menu" aria-label="Account" hidden></div>
+<div class="conn" id="conn" role="status" hidden></div>
 
 <main class="wrap" id="main">
   <div class="pagehead" id="pagehead">
@@ -361,6 +368,7 @@
 <div class="toast" id="toast" hidden></div>
 
 <script src="/claude-shim.js"></script>
+<script src="/pinpad.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

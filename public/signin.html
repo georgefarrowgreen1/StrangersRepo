@@ -38,6 +38,14 @@
   .err:empty{display:none}
   .links{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 16px}
   .linkbtn{background:none;border:0;padding:0;font:inherit;font-size:14px;color:var(--accent);cursor:pointer;min-height:36px;text-align:left}
+  .quick{display:grid;gap:12px}
+  .quick h2{font-size:18px}
+  .people{display:flex;flex-wrap:wrap;gap:10px}
+  .person{display:grid;justify-items:center;gap:6px;width:76px;border:0;background:none;font:inherit;color:var(--fg);cursor:pointer;padding:4px 0;border-radius:16px}
+  .person .av{width:56px;height:56px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:18px;color:var(--accent);background:var(--tint)}
+  .person span:last-child{font-size:13px;font-weight:600;text-align:center;line-height:1.2}
+  .person:active{transform:scale(.95)}
+  .or{margin:0;color:var(--muted);font-size:13px;text-align:center;border-top:1px solid var(--line);padding-top:12px}
 </style>
 </head>
 <body>
@@ -46,6 +54,13 @@
     <div>
       <div class="label">Strangers Coffee</div>
       <h1>Kitchen Diary</h1>
+    </div>
+
+    <!-- Quick sign-in: on a device someone has signed in on, people with a quick PIN tap their name -->
+    <div class="quick" id="quick" hidden>
+      <h2>Who's recording?</h2>
+      <div class="people" id="quickPeople"></div>
+      <p class="or">or sign in with your password</p>
     </div>
 
     <!-- Sign in -->
@@ -171,6 +186,7 @@
     </form>
   </section>
 </main>
+<script src="/pinpad.js"></script>
 <script src="/signin.js"></script>
 </body>
 </html>

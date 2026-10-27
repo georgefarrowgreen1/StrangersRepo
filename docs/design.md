@@ -21,6 +21,8 @@ How the Kitchen Diary looks and why, for anyone changing it. The style follows A
 - **The Add button** in the heading opens a section's form, starts a document directly, or shows a short menu when there's a choice (HACCP plan or risk assessment).
 - **Records and More rows show live status** (what's overdue, the last result, how many items), so people can see where to go without opening each section.
 - **Intros** are two lines on phones; tapping shows the rest.
+- **Offline**: a small amber label under the top bar ("Offline · 2 changes waiting") appears only while there's no connection or queued changes are saving; "Back online. All changes saved." confirms when they've gone.
+- **Quick switching** uses a 4-digit PIN pad in a bottom sheet (`public/pinpad.js`), with large keys, dots for progress, a shake and message on a wrong PIN, and keyboard support.
 - **Status colours**: green done or in range, amber part done or due, red missed, overdue or out of range. Status is never colour alone: each also has text or an icon.
 
 ## Motion

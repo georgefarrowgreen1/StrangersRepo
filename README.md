@@ -33,6 +33,12 @@ Everyone signs in with a **username and password**. Signed out, only the sign-in
 
 Records show the person's name (set by an admin), not their username. The first admin account is created on the sign-in page with the **setup code** (see `README-deploy.md`).
 
+**Shared iPads and phones.** Staff and managers can set a 4-digit **quick PIN** (account menu → Set a quick PIN). On a device where someone has signed in with a password, they then switch to themselves from the account menu (**Switch person**), or tap their name on the sign-in page, and enter the PIN. Five wrong PINs lock the account for 10 minutes. Admins always use their password.
+
+**Bad Wi-Fi.** If the connection drops, ticks and readings still work: they show straight away, an "Offline" label says how many are waiting, and they save by themselves when the connection returns.
+
+**Backups.** A copy of the whole diary is made every night and the last 30 are kept. Admins can make one or download any of them from the Admin page.
+
 ## What it costs
 
 Everything fits Cloudflare's free tier (Workers, D1, KV and a custom domain) for a team this size, with no card needed. `README-deploy.md` → "Limits and costs" has the numbers to watch.

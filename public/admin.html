@@ -55,12 +55,20 @@
   .prow .pills{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end}
   .chev{color:var(--muted);transition:transform .2s}
   .person.open .chev{transform:rotate(90deg)}
+  .person .pill.qp{background:var(--tint);color:var(--accent)}
   .person.off .prow .t b{color:var(--muted);text-decoration:line-through}
   .editor{display:grid;gap:12px;padding:4px 14px 16px}
   .editor h3{font-size:13px;font-weight:650;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-top:6px}
   .pinbox{display:grid;gap:4px;padding:14px 16px;border-radius:16px;background:var(--ok-bg)}
   .pinbox b{font-family:var(--mono);font-size:26px;letter-spacing:.06em;word-break:break-all}
   .roles{padding:4px 6px;color:var(--muted);font-size:14px}
+  .bk{display:flex;align-items:center;gap:12px;min-height:56px;padding:8px 14px}
+  .bk+.bk{border-top:1px solid var(--line)}
+  .bk .t{flex:1;display:grid;min-width:0}
+  .bk .t b{font-size:15px;font-weight:600}
+  .bk .t span{font-size:13px;color:var(--muted)}
+  .bk a{font-weight:650;color:var(--accent);text-decoration:none;min-height:40px;display:inline-flex;align-items:center}
+  .note.small{font-size:13px;margin:-4px 6px 0}
   .roles summary{cursor:pointer;font-weight:600;color:var(--accent);min-height:36px;display:flex;align-items:center}
   .roles ul{margin:6px 0 0;padding-left:18px;display:grid;gap:4px}
   @media (max-width:520px){.prow .pills .pill:not(:first-child){display:none}}
@@ -93,6 +101,10 @@
 
   <div class="row spread"><span class="label">Everyone</span><span class="pill" id="pplCount"></span></div>
   <div class="list glass people" id="people" aria-live="polite"></div>
+
+  <div class="row spread"><span class="label">Backups</span><button class="addbtn" type="button" id="backupNow">Back up now</button></div>
+  <div class="list glass" id="backups" aria-live="polite"></div>
+  <p class="note small">A backup of the whole diary is made every night and the last 30 are kept. Download one to keep your own copy; it holds every record and the list of accounts (never passwords). Allergen PDFs aren't included.</p>
 
   <details class="roles">
     <summary>What each role can do</summary>

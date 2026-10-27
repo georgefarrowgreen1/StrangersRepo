@@ -5,7 +5,7 @@ import { startServer, SETUP_CODE } from "./harness.mjs";
 
 let srv, ADMIN, STAFF;
 before(async () => {
-  srv = await startServer({ writeLimit: 80 });
+  srv = await startServer({ writeLimit: 80, scheduled: true });
   ADMIN = await setupAdmin("Sam Patel", "sam.patel", "admin-pass-1");
   const r = await admin("POST", "users", { name: "Alex Brown", username: "alex", role: "staff", password: "temp-pass-1" });
   assert.equal(r.status, 200);
@@ -59,7 +59,7 @@ test("signed out: only the sign-in page is reachable", async () => {
   assert.equal(r.body.code, "unauthenticated");
   assert.equal((await fetch(srv.base + "/_blob/" + "0".repeat(32))).status, 401);
   const me = await (await fetch(srv.base + "/api/auth/me")).json();
-  assert.deepEqual(me, { user: null, setupNeeded: false });
+  assert.deepEqual(me, { user: null, setupNeeded: false, quickSwitch: false });
 });
 
 test("page is served with the shim and noindex once signed in", async () => {
@@ -67,7 +67,7 @@ test("page is served with the shim and noindex once signed in", async () => {
   assert.equal(r.status, 200);
   const html = await r.text();
   assert.match(html, /<meta name="robots" content="noindex,nofollow">/);
-  assert.match(html, /<script src="\/claude-shim.js"><\/script>\n<script src="\/app.js"><\/script>/);
+  assert.match(html, /<script src="\/claude-shim.js"><\/script>\n<script src="\/pinpad.js"><\/script>\n<script src="\/app.js"><\/script>/);
   assert.equal(r.headers.get("x-robots-tag"), "noindex, nofollow");
   assert.equal(r.headers.get("cache-control"), "private, no-store");
   assert.match(await (await fetch(srv.base + "/robots.txt")).text(), /Disallow: \//);
@@ -78,7 +78,7 @@ test("setup works once, and needs the setup code", async () => {
   const again = await postJson("/api/auth/setup", { name: "Eve", username: "eve", password: "eve-pass-1", code: SETUP_CODE });
   assert.equal(again.status, 409);
   const me = await (await fetch(srv.base + "/api/auth/me", { headers: { cookie: ADMIN } })).json();
-  assert.deepEqual(me.user, { id: me.user.id, name: "Sam Patel", role: "admin", recordId: "web:Sam Patel" });
+  assert.deepEqual(me.user, { id: me.user.id, name: "Sam Patel", role: "admin", recordId: "web:Sam Patel", quickPin: false });
 });
 
 test("sign-in: username + password, wrong passwords, lockout and unlock", async () => {
@@ -284,6 +284,83 @@ test("PDF upload, serve and delete", async () => {
   const del = await fetch(`${srv.base}/api/assets/${info.id}`, { method: "DELETE", headers: { cookie: ADMIN } });
   assert.deepEqual(await del.json(), { deleted: true });
   assert.equal((await fetch(srv.base + info.url, { headers: { cookie: ADMIN } })).status, 404);
+});
+
+test("backups: admins make, list and download them; the daily job keeps 30", async () => {
+  await db("set", { path: "sites/cafe/days/2026-10-02", data: { date: "2026-10-02", problems: { text: "Backed up" } } });
+  assert.equal((await admin("POST", "backups", undefined, STAFF)).status, 403, "staff can't make backups");
+  const made = await admin("POST", "backups");
+  assert.equal(made.status, 200);
+  assert.ok(made.body.backup.docs >= 1 && made.body.backup.bytes > 0);
+  const list = await admin("GET", "backups");
+  assert.equal(list.body.backups[0].id, made.body.backup.id);
+  assert.equal(list.body.keep, 30);
+  const dl = await fetch(`${srv.base}/api/admin/backups/${made.body.backup.id}`, { headers: { cookie: ADMIN } });
+  assert.equal(dl.status, 200);
+  assert.match(dl.headers.get("content-disposition"), /attachment; filename="kitchen-diary-backup-/);
+  const backup = await dl.json();
+  assert.equal(backup.kind, "strangers-kitchen-diary-backup");
+  assert.deepEqual(backup.docs.find((d) => d.path === "sites/cafe/days/2026-10-02").data.problems, { text: "Backed up" });
+  assert.ok(backup.users.some((u) => u.username === "alex"));
+  assert.ok(!JSON.stringify(backup).includes("pin_hash") && !JSON.stringify(backup.users).includes("hash"), "no password hashes");
+  assert.equal((await fetch(`${srv.base}/api/admin/backups/2000-01-01T00-00-00Z`, { headers: { cookie: ADMIN } })).status, 404);
+
+  // The nightly run (the cron in wrangler.jsonc) makes one too.
+  await new Promise((r) => setTimeout(r, 1100)); // backups are named to the second
+  assert.equal((await fetch(`${srv.base}/__scheduled?cron=17+3+*+*+*`)).status, 200);
+  let nightly;
+  for (let i = 0; i < 20 && !nightly; i++) {
+    nightly = (await admin("GET", "backups")).body.backups.find((b) => b.by === "daily");
+    if (!nightly) await new Promise((r) => setTimeout(r, 250));
+  }
+  assert.ok(nightly, "the scheduled run made a backup");
+});
+
+test("quick switching: a 4-digit PIN works only on a device signed in with a password", async () => {
+  // Jo (staff) signs in with a password: that marks this "device" as trusted.
+  assert.equal((await admin("POST", "users", { name: "Jo Quick", username: "jo.quick", role: "staff", password: "temp-pass-1" })).status, 200);
+  await firstSignIn("jo.quick", "temp-pass-1", "jo-own-pass");
+  const r = await postJson("/api/auth/login", { username: "jo.quick", password: "jo-own-pass" });
+  const cookies = r.headers.getSetCookie().map((c) => c.split(";")[0]);
+  const device = cookies.find((c) => c.startsWith("sfbb_device="));
+  assert.ok(device, "a password sign-in marks the device");
+  const session = cookies.find((c) => c.startsWith("sfbb_session="));
+  const auth = (route, body, cookie) => fetch(`${srv.base}/api/auth/${route}`, { method: body === undefined ? "GET" : "POST", headers: { "content-type": "application/json", ...(cookie ? { cookie } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
+
+  assert.equal((await auth("pin", { pin: "12a4" }, session)).status, 400);
+  assert.equal((await auth("pin", { pin: "1111" }, session)).status, 400, "repeated digits refused");
+  assert.equal((await auth("pin", { pin: "4826" }, session)).status, 200);
+  assert.equal((await auth("pin", { pin: "4826" }, ADMIN)).status, 403, "admins don't get a quick PIN");
+  const me = await (await auth("me", undefined, `${session}; ${device}`)).json();
+  assert.equal(me.user.quickPin, true);
+  assert.equal(me.quickSwitch, true);
+
+  // Signed out, on the trusted device: the list shows Alex; elsewhere it's empty.
+  assert.deepEqual((await (await auth("people", undefined, device)).json()).people.map((p) => p.name), ["Jo Quick"]);
+  assert.deepEqual((await (await auth("people")).json()).people, []);
+  const joId = (await (await auth("people", undefined, device)).json()).people[0].id;
+  assert.equal((await auth("switch", { id: joId, pin: "4826" })).status, 403, "no switching from an unknown device");
+
+  const wrong = await auth("switch", { id: joId, pin: "0000" }, device);
+  assert.equal(wrong.status, 401);
+  assert.match((await wrong.json()).message, /4 tries left/);
+  const ok = await auth("switch", { id: joId, pin: "4826" }, device);
+  assert.equal(ok.status, 200);
+  const switched = ok.headers.get("set-cookie").split(";")[0];
+  assert.equal((await (await auth("me", undefined, switched)).json()).user.name, "Jo Quick");
+
+  // Five wrong PINs lock the account; an admin password reset clears the PIN.
+  for (let i = 0; i < 4; i++) await auth("switch", { id: joId, pin: "0000" }, device);
+  assert.equal((await auth("switch", { id: joId, pin: "0000" }, device)).status, 423);
+  assert.equal((await auth("switch", { id: joId, pin: "4826" }, device)).status, 423, "locked even with the right PIN");
+  const people = (await admin("GET", "users")).body.users;
+  const jo = people.find((u) => u.username === "jo.quick");
+  assert.equal(jo.quickPin, true);
+  await admin("PATCH", `users/${jo.id}`, { unlock: true });
+  assert.equal((await auth("switch", { id: joId, pin: "4826" }, device)).status, 200, "unlock works for PINs too");
+  await admin("PATCH", `users/${jo.id}`, { password: "generate" });
+  assert.equal((await admin("GET", "users")).body.users.find((u) => u.username === "jo.quick").quickPin, false, "a password reset clears the PIN");
+  assert.equal((await auth("switch", { id: joId, pin: "4826" }, device)).status, 404);
 });
 
 test("writes are rate limited per IP", async () => {

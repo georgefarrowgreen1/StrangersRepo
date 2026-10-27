@@ -14,6 +14,7 @@ function listItem(r: UserRow) {
     createdAt: r.created_at,
     createdBy: r.created_by,
     lastLoginAt: r.last_login_at,
+    quickPin: !!r.quick_hash,
   };
 }
 
@@ -110,7 +111,8 @@ export async function handleAdmin(req: Request, env: Env, route: string, admin: 
       // A temporary password: they choose their own at next sign-in.
       passwordOut = body.password === "generate" ? tempPassword() : checkPassword(body.password);
       const { hash, salt } = await hashPassword(passwordOut);
-      sets.push("pin_hash = ?", "pin_salt = ?", "must_change = 1", "failed = 0", "locked_until = 0");
+      // Resetting someone's password also clears their quick PIN: they set a new one once signed in.
+      sets.push("pin_hash = ?", "pin_salt = ?", "must_change = 1", "failed = 0", "locked_until = 0", "quick_hash = NULL", "quick_salt = NULL");
       args.push(hash, salt);
       bump = true;
     }

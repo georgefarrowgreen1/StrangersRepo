@@ -35,12 +35,14 @@ const SCHEMA = [
     must_change   INTEGER NOT NULL DEFAULT 0,   -- 1 = choose a new password at next sign-in
     active        INTEGER NOT NULL DEFAULT 1,
     session_ver   INTEGER NOT NULL DEFAULT 1,   -- bump to sign this person out everywhere
-    failed        INTEGER NOT NULL DEFAULT 0,   -- wrong PINs in a row
+    failed        INTEGER NOT NULL DEFAULT 0,   -- wrong passwords or quick PINs in a row
     locked_until  INTEGER NOT NULL DEFAULT 0,   -- ms since epoch
     created_at    INTEGER NOT NULL,
     created_by    TEXT,
     updated_at    INTEGER NOT NULL,
-    last_login_at INTEGER
+    last_login_at INTEGER,
+    quick_hash    TEXT,                         -- 4-digit quick-switch PIN hash (NULL = not set)
+    quick_salt    TEXT
   )`,
   // Server-generated secrets (the session signing key), created on first use.
   "CREATE TABLE IF NOT EXISTS secrets (k TEXT PRIMARY KEY, v TEXT NOT NULL)",
@@ -48,22 +50,25 @@ const SCHEMA = [
   "CREATE TABLE IF NOT EXISTS rate_limits (ip TEXT NOT NULL, window INTEGER NOT NULL, n INTEGER NOT NULL, PRIMARY KEY (ip, window))",
 ];
 
-// Upgrades a database created before usernames and passwords (when people signed in with name + PIN):
-// each account gets a username made from its name, and must choose a password at next sign-in (their
-// old PIN still works for that one sign-in).
+// Upgrades older databases in place:
+// - before usernames and passwords (when people signed in with name + PIN): each account gets a username
+//   made from its name, and must choose a password at next sign-in (their old PIN works for that sign-in);
+// - before quick switching: adds the quick-PIN columns.
 async function migrate(env: Env): Promise<void> {
   const cols = await env.DB.prepare("SELECT name FROM pragma_table_info('users')").all<{ name: string }>();
   const has = new Set(cols.results.map((c) => c.name));
-  if (has.has("username") && has.has("must_change")) return;
   const steps: string[] = [];
-  if (!has.has("username")) steps.push("ALTER TABLE users ADD COLUMN username TEXT");
-  if (!has.has("must_change")) steps.push("ALTER TABLE users ADD COLUMN must_change INTEGER NOT NULL DEFAULT 0");
-  steps.push(
-    "UPDATE users SET username = lower(replace(trim(name), ' ', '.')), must_change = 1 WHERE username IS NULL",
-    // Same name twice is already impossible (name_key is unique), but keep usernames unique regardless.
-    "UPDATE users SET username = username || '-' || substr(id, 1, 4) WHERE rowid NOT IN (SELECT min(rowid) FROM users GROUP BY username)",
-  );
-  await env.DB.batch(steps.map((s) => env.DB.prepare(s)));
+  if (!has.has("username") || !has.has("must_change")) {
+    if (!has.has("username")) steps.push("ALTER TABLE users ADD COLUMN username TEXT");
+    if (!has.has("must_change")) steps.push("ALTER TABLE users ADD COLUMN must_change INTEGER NOT NULL DEFAULT 0");
+    steps.push(
+      "UPDATE users SET username = lower(replace(trim(name), ' ', '.')), must_change = 1 WHERE username IS NULL",
+      // Same name twice is already impossible (name_key is unique), but keep usernames unique regardless.
+      "UPDATE users SET username = username || '-' || substr(id, 1, 4) WHERE rowid NOT IN (SELECT min(rowid) FROM users GROUP BY username)",
+    );
+  }
+  if (!has.has("quick_hash")) steps.push("ALTER TABLE users ADD COLUMN quick_hash TEXT", "ALTER TABLE users ADD COLUMN quick_salt TEXT");
+  if (steps.length) await env.DB.batch(steps.map((s) => env.DB.prepare(s)));
 }
 
 let ready: Promise<unknown> | null = null;

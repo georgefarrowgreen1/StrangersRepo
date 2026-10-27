@@ -13,6 +13,7 @@
 
   function show(id, focus) {
     for (const f of FORMS) $("#" + f).hidden = f !== id;
+    if ($("#quick").dataset.ready) $("#quick").hidden = id !== "signin"; // quick sign-in sits above the sign-in form only
     document.querySelectorAll(".err").forEach((e) => { e.textContent = ""; });
     const el = focus ? $(focus) : $(`#${id} input:not([hidden])`);
     if (el) el.focus();
@@ -137,12 +138,44 @@
     location.replace("/admin");
   });
 
+  /* ---------- quick sign-in ---------- */
+
+  // Lists people with a quick PIN, on a device someone has signed in on with a password (the server
+  // returns nobody anywhere else). Tapping a name asks for their PIN (pinpad.js).
+  async function quickSignIn() {
+    let people = [];
+    try { people = (await (await fetch("/api/auth/people")).json()).people || []; } catch (e) { return; }
+    if (!people.length) return;
+    const initials = (n) => n.split(/\s+/).filter(Boolean).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+    const box = $("#quickPeople");
+    box.replaceChildren(...people.map((p) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "person";
+      const av = document.createElement("span"); av.className = "av"; av.textContent = initials(p.name);
+      const nm = document.createElement("span"); nm.textContent = p.name;
+      b.append(av, nm);
+      b.addEventListener("click", () => PinPad.open({
+        title: `Hi ${p.name.split(" ")[0]}`, sub: "Enter your quick PIN",
+        onPin: async (pin) => {
+          try { await post("/api/auth/switch", { id: p.id, pin }); } catch (e) { return e.message; }
+          location.replace(next);
+          return null;
+        },
+      }));
+      return b;
+    }));
+    $("#quick").dataset.ready = "1";
+    $("#quick").hidden = $("#signin").hidden;
+  }
+
   /* ---------- start ---------- */
 
   fetch("/api/auth/me").then((r) => r.json()).then(({ user, setupNeeded }) => {
     if (user && location.hash === "#change") { show("change"); return; } // from the diary's account menu
     if (user) { location.replace(next); return; }
     show(setupNeeded ? "setup" : "signin");
+    if (!setupNeeded) quickSignIn();
   }).catch(() => {
     show("signin");
     $("#err").textContent = "Couldn't reach the diary. Check your connection and reload.";

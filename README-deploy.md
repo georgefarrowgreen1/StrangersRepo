@@ -10,7 +10,9 @@ The site is one Cloudflare Worker serving the diary's pages and the API they tal
 | `public/signin.html`, `public/signin.js` | Sign-in, choosing a new password, changing a password, first-admin setup and admin password recovery. |
 | `public/admin.html`, `public/admin.js` | The Admin page: people and roles. |
 | `public/icon-*.png`, `public/manifest.webmanifest` | Home Screen icon and app settings. |
-| `src/` | The Worker: `index.ts` (routing and security headers), `access.ts` (who can reach what: access control, roles and write rate limiting, in one place), `auth.ts` (sign-in and sessions), `admin.ts` (admin API), `docs.ts` (the db API), `assets.ts` (PDFs), `paths.ts` (allowed document paths), `schema.ts` (database tables, created automatically). |
+| `public/pinpad.js` | The 4-digit PIN pad for quick switching, used by the diary and the sign-in page. |
+| `src/` | The Worker: `index.ts` (routing, security headers and the nightly job), `access.ts` (who can reach what: access control, roles and write rate limiting, in one place), `auth.ts` (sign-in, sessions and quick switching), `admin.ts` (admin API), `backup.ts` (nightly backups), `docs.ts` (the db API), `assets.ts` (PDFs), `paths.ts` (allowed document paths), `schema.ts` (database tables, created automatically). |
+| `.github/workflows/test.yml` | Runs every test on GitHub for each push and pull request. |
 | `test/` | `api.test.mjs` and `migration.test.mjs` (the API, against `wrangler dev`) and `e2e.test.mjs` (the site in a browser, phone-sized). |
 
 Data lives in a D1 database (`kitchen-diary`) and allergen PDFs in a KV namespace. Cloudflare creates both on the first deploy and the Worker creates its own tables, so there are no ids to copy and no migrations to run. The only secret is the **setup code**.
@@ -31,13 +33,17 @@ Data lives in a D1 database (`kitchen-diary`) and allergen PDFs in a KV namespac
 
 Edit the files in `public/` (or `src/` for the API), run the tests, and push to `main`. The deploy takes about a minute. If a deploy fails, the build log is in the Cloudflare dashboard under the Worker → **Deployments**, and GitHub shows a red cross next to the commit.
 
+**Tests on GitHub.** Every push and pull request runs the typecheck, the API tests and the browser test (the "Tests" check). Cloudflare deploys whatever reaches `main`, so the safe way to change the site is a branch and a pull request, merged once Tests is green. To make that a rule: GitHub → the repo → **Settings → Rules → Rulesets → New branch ruleset**, target the default branch, and turn on **Require a pull request before merging** and **Require status checks to pass** (choose "test").
+
 ## Change the setup code
 
 In the Worker: **Settings → Variables and Secrets**, edit `SETUP_CODE`. It takes effect immediately and only affects creating the first admin and the "Admin? Forgotten password" recovery. Existing accounts and sessions are unaffected. (`SYNC_TOKEN`, the secret's name before the Claude sync was removed, is still accepted if `SETUP_CODE` isn't set.)
 
 ## Back up
 
-The website is the only copy of the diary, so take backups. From a terminal:
+The website is the only copy of the diary. **It backs itself up every night** (03:17 UTC, the cron in `wrangler.jsonc`) into the KV namespace, keeping the last 30. On the Admin page, **Back up now** makes one straight away and **Download** saves any of them: a JSON file with every record (by path) and the list of accounts (no passwords). Keep a download somewhere safe now and then; those copies survive even if the Cloudflare account doesn't.
+
+To restore, the JSON's `docs` are documents to write back at their `path`s (ask Claude Code to do it with the db API or `wrangler d1 execute`). For a full copy of the database from a terminal:
 
 ```sh
 npx wrangler d1 export kitchen-diary --remote --output backup-$(date +%F).sql
@@ -69,7 +75,8 @@ Writes are limited to 600 per IP address per 15 minutes (`WRITE_LIMIT_PER_15_MIN
 
 - **Adding people.** Account menu → **Admin** → **Add person**: their name (as it should appear on records), a username (suggested from the name), their role, and a temporary password, or leave it blank to have one created. Give them the username and temporary password in person; they choose their own password when they first sign in. If they've recorded entries under a name before, use exactly that name to keep their history together.
 - **Changing a password.** Anyone can: account menu → **Change password**.
-- **Forgotten password.** On the Admin page, tap the person and set or create a temporary password. That signs them out everywhere.
+- **Forgotten password.** On the Admin page, tap the person and set or create a temporary password. That signs them out everywhere and clears their quick PIN.
+- **Quick PINs.** Staff and managers set their own (account menu → Set a quick PIN; 4 digits, not repeated or running digits). Switching with a PIN only works on a device someone has signed in on with a password in the last 180 days; elsewhere the list of names is empty. Wrong PINs count towards the same 5-tries lock as passwords. The Admin page shows who has one.
 - **Locked out.** Five wrong passwords lock an account for 10 minutes (and each IP is limited to 30 failed attempts per 15 minutes). An admin can **Unlock** it straight away.
 - **Someone leaves.** Tap them on the Admin page → **Switch off**. They can't sign in, and their records stay.
 - **The only admin forgot their password.** On the sign-in page, choose "Admin? Forgotten password" and use the setup code.

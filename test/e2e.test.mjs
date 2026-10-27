@@ -74,7 +74,7 @@ test("staff journey on the real page", async () => {
 
   await page.click("a.back");
   await page.locator("#avatarBtn", { hasText: "SP" }).waitFor();
-  assert.deepEqual(await accountMenu(page), ["Change password", "Admin", "Sign out"]);
+  assert.deepEqual(await accountMenu(page), ["Switch person", "Change password", "Admin", "Sign out"]);
 
   // Switch to the Cafe and tick an opening check.
   await switchSite(page, "Cafe");
@@ -187,11 +187,11 @@ test("staff journey on the real page", async () => {
 
   // Staff: no admin link, no manager sections, and the server refuses manager changes.
   await page.locator("#avatarBtn", { hasText: "AB" }).waitFor();
-  assert.deepEqual(await accountMenu(page), ["Change password", "Sign out"]);
+  assert.deepEqual(await accountMenu(page), ["Switch person", "Set a quick PIN", "Change password", "Sign out"]);
   await page.locator("#tabbar .tab", { hasText: "Records" }).click();
   assert.deepEqual(await page.locator("#recordsHub .lrow b").allTextContents(), ["Extra checks", "Cleaning", "Prove it", "Allergens"]);
   await page.locator("#tabbar .tab", { hasText: "More" }).click();
-  assert.deepEqual(await page.locator("#moreHub .lrow b").allTextContents(), ["Last 4 weeks", "Change password", "Sign out"]);
+  assert.deepEqual(await page.locator("#moreHub .lrow b").allTextContents(), ["Last 4 weeks", "Switch person", "Set a quick PIN", "Change password", "Sign out"]);
   const refused = await fetch(`${srv.base}/api/db/set`, { method: "POST", headers: { "content-type": "application/json", cookie: (await ctx.cookies()).map((c) => `${c.name}=${c.value}`).join("; ") },
     body: JSON.stringify({ path: "suppliers/x", data: { name: "X" } }) });
   assert.equal((await refused.json()).code, "permission_denied");
@@ -209,6 +209,38 @@ test("staff journey on the real page", async () => {
   await page.fill("#username", "alex.brown");
   await page.fill("#password", "alex-own-pass");
   await page.click("#signin button[type=submit]");
+  await page.locator("#avatarBtn", { hasText: "AB" }).waitFor();
+
+  // Bad Wi-Fi: a tick made offline shows straight away, waits on the device, and saves once back online.
+  const t1 = await page.evaluate(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; });
+  await page.locator("#weekCtl, #dayCtl").first().waitFor({ state: "attached" });
+  await ctx.setOffline(true);
+  await page.locator("#openList label", { hasText: "Hands washed" }).click();
+  await page.locator("#conn", { hasText: "Offline · 1 change waiting" }).waitFor();
+  assert.equal(await page.locator("#openList input").first().isChecked(), true, "the tick shows while offline");
+  await ctx.setOffline(false);
+  await page.locator("#conn").waitFor({ state: "hidden", timeout: 15000 });
+  await page.locator("#toast", { hasText: "Back online" }).waitFor();
+  const saved = await api("get", { path: `days/${t1}` });
+  assert.equal(saved.data.opening.items.o1, true);
+  assert.equal(saved.data.opening.by, "web:Alex Brown");
+
+  // Quick switching: Alex sets a 4-digit PIN, signs out, then signs back in from the list with the PIN.
+  await accountMenu(page, "Set a quick PIN");
+  for (const pin of ["4826", "4826"]) {
+    await page.locator(".pp-sheet").waitFor();
+    for (const d of pin) await page.locator(".pp-key", { hasText: d }).first().click();
+    await page.waitForTimeout(400);
+  }
+  await page.locator("#toast", { hasText: "Quick PIN set" }).waitFor();
+  assert.ok((await accountMenu(page)).includes("Switch person"), "this device can switch person");
+  await accountMenu(page, "Sign out");
+  await page.waitForURL(/\/signin$/);
+  await page.locator("#quick .person", { hasText: "Alex Brown" }).click();
+  for (const d of "1357") await page.locator(".pp-key", { hasText: d }).first().click();
+  await page.locator(".pp-msg", { hasText: "Wrong PIN" }).waitFor();
+  for (const d of "4826") await page.locator(".pp-key", { hasText: d }).first().click();
+  await page.waitForURL(srv.base + "/");
   await page.locator("#avatarBtn", { hasText: "AB" }).waitFor();
 
   assert.deepEqual(errors, []);

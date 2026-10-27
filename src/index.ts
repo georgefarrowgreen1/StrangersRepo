@@ -3,6 +3,7 @@
 import { authorize, isPublicAsset, limitWrites, recordId, requireUser } from "./access";
 import { handleAdmin } from "./admin";
 import { handleAuth } from "./auth";
+import { handleBackups, makeBackup } from "./backup";
 import { deleteAsset, serveBlob, uploadAsset } from "./assets";
 import { WRITE_OPS, handleDb } from "./docs";
 import { ApiError, Env, errorResponse, json } from "./http";
@@ -32,6 +33,11 @@ export default {
     }
     return withSecurityHeaders(res, local);
   },
+
+  // The daily backup (cron in wrangler.jsonc).
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(ensureSchema(env).then(() => makeBackup(env, "daily")));
+  },
 } satisfies ExportedHandler<Env>;
 
 async function route(req: Request, env: Env, ctx: ExecutionContext, url: URL): Promise<Response> {
@@ -56,7 +62,9 @@ async function route(req: Request, env: Env, ctx: ExecutionContext, url: URL): P
 
   if (p.startsWith("/api/admin/")) {
     if (user.role !== "admin") throw new ApiError(403, "permission_denied", "Only admins can do this.");
-    return handleAdmin(req, env, p.slice("/api/admin/".length), user);
+    const r = p.slice("/api/admin/".length);
+    if (r === "backups" || r.startsWith("backups/")) return handleBackups(req, env, r.slice("backups/".length), user.name);
+    return handleAdmin(req, env, r, user);
   }
 
   const db = p.match(/^\/api\/db\/([a-z]+)$/);

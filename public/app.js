@@ -172,7 +172,9 @@ function armDelete(btn,label,fn){
 async function resolveNames(ids){
   ids=[...new Set(ids.filter(Boolean))];
   if(!S.user||!ids.length)return;
-  const ps=await S.user.profiles(ids);let changed=false;
+  let ps;try{ps=await S.user.profiles(ids)}catch(e){return}
+  if(!ps)return; // offline: keep the names already shown
+  let changed=false;
   for(const id of ids){const n=(ps[id]&&ps[id].name)||"";if(S.names[id]!==n){S.names[id]=n;changed=true}}
   if(changed)renderAll();
 }
@@ -1659,10 +1661,57 @@ function renderNav(){
     el("button",{class:"lrow"+(danger?" danger":""),type:"button",onclick:fn},el("span",{class:"tile "+tile},svgi(ICON[ic])),el("span",{class:"t"},el("b",{text:t}),danger&&S.myName?el("span",{class:"s",text:"Signed in as "+S.myName}):null)))));
 }
 function accountItems(){
-  return[["Change password","key","grey",()=>{location.href="/signin#change"}],
+  return[...(S.quickSwitch?[["Switch person","staff","teal",openPeopleSheet]]:[]),
+    ...(S.role&&S.role!=="admin"?[[S.quickPin?"Change quick PIN":"Set a quick PIN","key","indigo",setQuickPin]]:[]),
+    ["Change password","key","grey",()=>{location.href="/signin#change"}],
     ...(S.role==="admin"?[["Admin","shield","blue",()=>{location.href="/admin"}]]:[]),
     ["Sign out","out","red",signOut,true]];
 }
+
+/* ---------- quick switching (shared devices) ----------
+ * On a device someone has signed in on with a password, staff and managers switch to themselves with a
+ * 4-digit quick PIN (pinpad.js) instead of signing out and in. */
+async function authPost(route,body){
+  let r;try{r=await fetch("/api/auth/"+route,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)})}
+  catch(e){return{ok:false,message:"Couldn't reach the diary. Check your connection."}}
+  const j=await r.json().catch(()=>({}));return r.ok?{ok:true,...j}:{ok:false,message:j.message||"Something went wrong."};
+}
+function setQuickPin(){
+  PinPad.open({title:"Choose a quick PIN",sub:"4 digits, to switch to yourself on shared devices",onPin:async first=>{
+    setTimeout(()=>PinPad.open({title:"Enter it again",sub:"To check it",onPin:async again=>{
+      if(again!==first)return "Those didn't match. Start again by choosing a PIN.";
+      const r=await authPost("pin",{pin:first});if(!r.ok)return r.message;
+      S.quickPin=true;renderNav();toast("Quick PIN set. Use Switch person on a shared device.");return null;
+    }}),250);
+    return null;
+  }});
+}
+async function openPeopleSheet(){
+  const box=$("#peopleList");box.replaceChildren(el("div",{class:"empty",text:"Loading…"}));
+  $("#sheetVeil").hidden=false;$("#peopleSheet").hidden=false;
+  let people=[];try{people=(await (await fetch("/api/auth/people")).json()).people||[]}catch(e){}
+  box.replaceChildren(...people.map(p=>el("button",{class:"lrow"+(p.name===S.myName?" on":""),type:"button","aria-current":p.name===S.myName?"true":null,onclick:()=>{
+      if(p.name===S.myName){closeSheets();return}
+      closeSheets();
+      PinPad.open({title:`Hi ${firstName(p.name)}`,sub:"Enter your quick PIN",onPin:async pin=>{
+        const r=await authPost("switch",{id:p.id,pin});if(!r.ok)return r.message;
+        location.reload();return null;
+      }});
+    }},el("span",{class:"avatar sm",text:initials(p.name)}),el("span",{class:"t"},el("b",{text:p.name}),p.name===S.myName?el("span",{class:"s",text:"Recording now"}):null))));
+  if(!people.length)box.replaceChildren(el("div",{class:"empty",text:"No one has a quick PIN yet. Each person sets one from this menu."}));
+  $("#peopleNote").replaceChildren("Not listed? ",el("a",{href:"#",onclick:e=>{e.preventDefault();signOut()}},"Sign in with your password"),".");
+}
+
+/* ---------- connection: changes made offline wait on this device (claude-shim.js) ---------- */
+window.addEventListener("diary:connection",e=>{
+  const{offline,pending}=e.detail,c=$("#conn");
+  const was=!c.hidden;
+  c.hidden=!offline&&!pending;
+  c.textContent=offline?`Offline${pending?` · ${pending} change${pending===1?"":"s"} waiting`:""}`:`Saving ${pending} change${pending===1?"":"s"}…`;
+  c.title=offline?"No connection. Changes are kept on this device and save when it's back.":"";
+  if(was&&c.hidden)toast("Back online. All changes saved.");
+});
+window.addEventListener("diary:dropped",e=>toast("A change couldn't be saved: "+(e.detail.message||"refused by the diary")));
 async function signOut(){try{await fetch("/api/auth/logout",{method:"POST"})}catch(e){}location.replace("/signin")}
 function renderMe(){
   $("#avatarBtn").textContent=initials(S.myName);
@@ -1670,7 +1719,7 @@ function renderMe(){
     el("span",{class:"t"},el("b",{text:S.myName||"Signed in"}),el("span",{class:"s",text:{admin:"Admin",manager:"Manager",staff:"Staff"}[S.role]||""})),svgi(ICON.chevR));
 }
 /* sheets and the account menu */
-function closeSheets(){$("#sheetVeil").hidden=true;$("#siteSheet").hidden=true;$("#acctMenu").hidden=true}
+function closeSheets(){$("#sheetVeil").hidden=true;$("#siteSheet").hidden=true;$("#peopleSheet").hidden=true;$("#acctMenu").hidden=true}
 function openSiteSheet(){renderSites();$("#sheetVeil").hidden=false;$("#siteSheet").hidden=false;const on=$("#siteList .on")||$("#siteList button");if(on)on.focus()}
 function openAcctMenu(anchor){
   const m=$("#acctMenu");
@@ -1978,7 +2027,7 @@ applyTabs();renderAll();
   if(S.user){
     const me=await S.user.me();S.me=me.id;
     const w=await S.user.can("data.write");if(w===false){S.canWrite=false;$("#readonly").hidden=false}
-    S.myName=me.name||"";S.role=me.role||"staff";renderMe();
+    S.myName=me.name||"";S.role=me.role||"staff";S.quickPin=!!me.quickPin;S.quickSwitch=!!me.quickSwitch;renderMe();
     if(!canTab(S.tab))show("day",{quiet:true});else renderNav();
   }
   subscribeSummaries();

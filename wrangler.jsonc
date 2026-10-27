@@ -19,7 +19,7 @@
   // The Worker creates its own tables on first use (src/schema.ts).
   "d1_databases": [{ "binding": "DB", "database_name": "kitchen-diary" }],
 
-  // Allergen PDFs (KV values can be up to 25 MB; uploads are capped at 20 MB).
+  // Allergen PDFs and the daily backups (KV values can be up to 25 MB; uploads are capped at 20 MB).
   "kv_namespaces": [{ "binding": "FILES" }],
 
   "vars": {
@@ -34,6 +34,9 @@
   // Local dev rewrites requests to the route's hostname; keep them https so the Worker's
   // http-to-https redirect doesn't loop.
   "dev": { "upstream_protocol": "https" },
+
+  // A backup of the diary every day at 03:17 UTC (src/backup.ts). Free on every plan.
+  "triggers": { "crons": ["17 3 * * *"] },
 
   "observability": { "enabled": true }
 }

@@ -17,10 +17,11 @@ export class ApiError extends Error {
 export const invalid = (message: string) => new ApiError(400, "invalid_argument", message);
 
 export function json(body: unknown, status = 200, headers: HeadersInit = {}): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...headers },
-  });
+  // Headers rather than an object spread, so a response can set more than one cookie.
+  const h = new Headers(headers);
+  h.set("content-type", "application/json; charset=utf-8");
+  h.set("cache-control", "no-store");
+  return new Response(JSON.stringify(body), { status, headers: h });
 }
 
 export function errorResponse(e: ApiError): Response {

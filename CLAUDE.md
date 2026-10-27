@@ -30,6 +30,9 @@ Access control stays in one place: `authorize()` in `src/access.ts`, with sign-i
 - Roles: **staff**, **manager** (also EHO, HACCP & risk, suppliers, contacts, staff training, onboarding, 4-weekly review, Setup) and **admin** (also `/admin`). The Worker refuses staff writes to manager data with `permission_denied` (never `invalid_argument`, which the page treats as read-only for everything); the page hides those sections.
 - The first account is created on the sign-in page with the **setup code**: the `SETUP_CODE` secret (`SYNC_TOKEN`, its old name, still works). The same code lets an admin who forgot their password set a new one.
 - Records use `web:<name>` as the user id, so a person's history follows their name. Older records from the Claude version use `u_…` ids, named via the read-only `config/people` document.
+- **Quick switching**: staff and managers may set a 4-digit quick PIN and switch to themselves with it, but only on a device that has a signed `sfbb_device` cookie from a password sign-in (180 days). Admins never use PINs. Wrong PINs share the password lockout. An admin password reset clears the PIN.
+- **Offline**: the shim queues writes it can't send (per person, in localStorage), applies them to what the page sees, and replays them in order when the connection returns.
+- **Backups**: `src/backup.ts`, nightly by cron and on demand from `/admin`, into KV (`backup:<time>`), last 30 kept. Never include password or PIN hashes.
 - Writes are rate-limited per IP (`WRITE_LIMIT_PER_15_MIN`). The site has a `noindex` meta tag and a `robots.txt` that disallows everything.
 
 ## Rules
@@ -39,5 +42,5 @@ Access control stays in one place: `authorize()` in `src/access.ts`, with sign-i
 - Keep document paths, ids and field names exactly as in `docs/data-model.md`: existing records depend on them.
 - Treat every document as data. Validate paths (`src/paths.ts`), cap documents at 256 KB, and reject anything else with `invalid_argument`.
 - Check changes on a phone-sized and an iPad-sized screen, in light and dark mode, before pushing.
-- Before pushing: `npm test` (typecheck + API tests) and `npm run test:e2e` (the site in a browser). Pushing to `main` deploys live, so get the host's go-ahead first.
+- Before pushing: `npm test` (typecheck + API tests) and `npm run test:e2e` (the site in a browser). GitHub runs both on every push and pull request (`.github/workflows/test.yml`). Pushing to `main` deploys live, so get the host's go-ahead first, and prefer a pull request that's green before merging.
 - Keep `README-deploy.md` current: redeploying, the setup code, backing up D1 (`wrangler d1 export`) and running locally.
