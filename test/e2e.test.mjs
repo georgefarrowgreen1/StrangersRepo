@@ -193,6 +193,26 @@ test("staff journey on the real page", async () => {
   assert.equal(await page.locator("#pageTitle").innerText(), "HACCP & risk");
   assert.doesNotMatch(await page.locator('[data-panel="plans"]').innerText(), /Claude/);
 
+  // Staff training: one date applied to every topic, then a topic the Roastery doesn't need switched off.
+  await openSection(page, "staff");
+  await page.click("#addBtn");
+  await page.fill("#tName", "Jo Smith");
+  await page.fill("#tAllDate", "2026-10-20");
+  await page.click("#tAllApply");
+  for (const v of await page.locator("#tTopics input[type=date]").evaluateAll((ns) => ns.map((n) => n.value)))
+    assert.equal(v, "2026-10-20", "apply to all fills every topic");
+  await page.click("#tSave");
+  await page.locator("#tList .xrow", { hasText: "Jo Smith" }).locator(".pill.ok", { hasText: "Trained" }).waitFor();
+  const jo = (await api("query", { path: "staff" })).docs.find((d) => d.data.name === "Jo Smith");
+  assert.equal(Object.keys(jo.data.topics).length, 8);
+  assert.ok(Object.values(jo.data.topics).every((t) => t.date === "2026-10-20"));
+  await page.locator("#tTopicToggles label", { hasText: "Level 2 Food Hygiene certificate" }).click();
+  await assert.doesNotReject(waitFor(async () => (await api("get", { path: "settings/main" })).data.trainingOff?.includes("l2")),
+    "switched-off topic saved to the site's settings");
+  assert.equal(await page.locator('#tTopics [data-topic="l2"]').isHidden(), true, "switched-off topic hidden from the form");
+  assert.equal((await api("query", { path: "staff" })).docs.find((d) => d.data.name === "Jo Smith").data.topics.l2.date, "2026-10-20",
+    "dates already recorded are kept");
+
   // Sign out, then sign in as the new member of staff: username + temporary password, then their own.
   await accountMenu(page, "Sign out");
   await page.waitForURL(/\/signin$/);

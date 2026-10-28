@@ -54,7 +54,7 @@ units:[{id,name,kind:"fridge"|"freezer"}]
 opening|closing|weekly:[{id,t,off?:true}]     // checks; off = turned off at this site
 closedDays:[0..6]   // 0 = Sunday
 hide:{<tab>:true}   // sections not used at this site
-proveOff:[<method>]  info:{address,manager,note}  startDate
+proveOff:[<method>]  trainingOff:[<topic>]  info:{address,manager,note}  startDate
 updatedBy, updatedAt, publishedAt?, publishedFrom?
 ```
 
@@ -85,6 +85,8 @@ The page writes these with nested `update`s such as `{temps:{u1:{am:{v:3.2,by,at
 **`contacts/<id>`**: `type, name, person, phone, outOfHours, email, account, notes, by, at`
 
 **`staff/<id>`**: `name, role, start, topics:{<topic>:{date,by}}, notes, personId, sites:[siteIds], at`
+
+Training topics (`<topic>`): `hygiene`, `cross`, `cleaning`, `chilling`, `cooking`, `allergens`, `diary`, `l2`. A site's `trainingOff` (set from Staff training → Topics for this site) lists the topics it doesn't use: they're hidden there and not counted as training to do, and any dates already in `topics` are kept.
 
 **`reviews/<YYYY-MM-DD>`**: `date, answers:{<q>:{a:"Yes"|"No", d}}, notes, by, at`
 
