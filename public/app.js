@@ -804,7 +804,7 @@ function renderEditor(){
   notes.addEventListener("input",()=>{d.notes=notes.value;markDirty()});
   const legend=k==="haccp"
     ?"Rows ticked as CCP are critical control points and are highlighted. Click any cell to edit it, then save."
-    :"Risk = likelihood × severity, each from 1 (lowest) to 5 (highest). 1–4 is low, 5–12 medium, 15–25 high.";
+    :"Risk = likelihood × severity, each from 1 (lowest) to 5 (highest).";
   const del=el("button",{class:"btn ghost danger",hidden:R},"Delete document");
   armDelete(del,"Delete document",async()=>{if(await save(()=>D("plans",P.id).delete())){closePlan();toast("Document deleted")}});
   const hist=(d.history||[]).slice(0,10);
