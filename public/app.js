@@ -68,6 +68,8 @@ const nice=s=>s?parse(s).toLocaleDateString("en-GB",{weekday:"short",day:"numeri
 const short=s=>s?parse(s).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"2-digit"}):"";
 const time=ts=>ts?new Date(ts).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"}):"";
 const when=ts=>ts?new Date(ts).toLocaleDateString("en-GB",{day:"numeric",month:"short"})+" "+time(ts):"";
+// A task's "last done" date entered by hand has no real time of day, so it shows as a date only.
+const lastWhen=(ts,set)=>!ts?"":set?new Date(ts).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:new Date(ts).getFullYear()===new Date().getFullYear()?undefined:"numeric"}):when(ts);
 // A short message above the tab bar. With an action (e.g. ["Undo", fn]) it stays longer and shows a button.
 function toast(m,action){
   const t=$("#toast");t.hidden=true;void t.offsetWidth;
@@ -124,7 +126,7 @@ function taskState(t){
   const days=FREQ[t.freq];
   const base=t.lastAt||t.importedAt;
   if(!base)return days>0?{cls:"bad",text:"Never done",overdue:true}:{cls:"warn",text:"Not done yet",overdue:false};
-  if(!days)return t.lastAt?{cls:"ok",text:"Last done "+when(t.lastAt),overdue:false}:{cls:"warn",text:"Not done yet",overdue:false};
+  if(!days)return t.lastAt?{cls:"ok",text:"Last done "+lastWhen(t.lastAt,t.lastSet),overdue:false}:{cls:"warn",text:"Not done yet",overdue:false};
   const due=new Date(base);due.setHours(0,0,0,0);due.setDate(due.getDate()+days);
   const now=new Date();now.setHours(0,0,0,0);
   const left=Math.round((due-now)/864e5),pre=t.lastAt?"":"Not done yet · ";
@@ -519,15 +521,19 @@ function renderTasks(kind){
     for(const{t,st}of g){
       if(t.lastBy)ids.push(t.lastBy);
       const note=el("input",{type:"text",placeholder:"Note (optional)",disabled:R,"aria-label":"Note for "+t.name});
-      const hist=(t.log||[]).slice(0,5).map(e=>el("li",{},el("span",{text:when(e.at)}),el("span",{class:"s",text:nameOf(e.by)+(e.note?" · "+e.note:"")})));
+      const hist=(t.log||[]).slice(0,5).map(e=>el("li",{},el("span",{text:lastWhen(e.at,e.set)}),el("span",{class:"s",text:nameOf(e.by)+(e.note?" · "+e.note:"")})));
+      const dateId=`${kind}_last_${t.id}`;
+      const dateIn=el("input",{type:"date",id:dateId,max:iso(new Date()),value:t.lastAt?iso(new Date(t.lastAt)):""});
       for(const e of(t.log||[]).slice(0,5))ids.push(e.by);
       list.append(xrow(kind+t.id,{
         title:t.name,
-        sub:[(t.freq||"").replace(/^./,c=>c.toUpperCase()),t.who,t.lastAt?`last ${when(t.lastAt)}, ${nameOf(t.lastBy)}`:"never done"].filter(Boolean).join(" · "),
+        sub:[(t.freq||"").replace(/^./,c=>c.toUpperCase()),t.who,t.lastAt?`last ${lastWhen(t.lastAt,t.lastSet)}, ${nameOf(t.lastBy)}`:"never done"].filter(Boolean).join(" · "),
         right:[label==="Coming up"||label==="As needed"?el("span",{class:"pill "+(label==="As needed"?"":"ok"),text:label==="As needed"?"As needed":st.text.replace(/^Due /,"")}):el("span",{class:"pill "+st.cls,text:st.overdue?st.text.replace(/^Not done yet · /,"").replace(/^Overdue by (\d+) days?$/,"$1d late"):"Today"}),
           R?null:el("button",{class:"btn sm",type:"button",onclick:()=>completeTask(kind,t,S.site,"")},"Done")],
         details:[t.how?el("p",{class:"how",text:t.how}):null,
           R?null:el("div",{class:"row"},note,el("button",{class:"btn ghost sm",type:"button",onclick:()=>completeTask(kind,t,S.site,note.value.trim())},"Done with note")),
+          R?null:el("div",{class:"row lastdate"},el("label",{class:"label",for:dateId,text:"Last done on"}),dateIn,
+            el("button",{class:"btn ghost sm",type:"button",onclick:()=>setTaskDate(kind,t,S.site,dateIn.value)},"Save date")),
           hist.length?el("ul",{class:"hist"},...hist):el("p",{class:"s",text:"Not recorded as done yet."}),
           R?null:el("div",{class:"row"},el("button",{class:"btn ghost sm",type:"button",onclick:()=>editTask(kind,t)},"Edit "+cfg.noun))]}));
     }
@@ -541,9 +547,25 @@ function renderTasks(kind){
 async function completeTask(kind,t,site,note){
   const entry={at:Date.now(),by:S.me,note:note||""};
   const log=[entry,...(t.log||[])].slice(0,30);
-  const before={lastAt:t.lastAt||null,lastBy:t.lastBy||null,log:t.log||[]};
-  if(await save(()=>D(kind,t.id,site).update({lastAt:entry.at,lastBy:entry.by,log})))
+  const before={lastAt:t.lastAt||null,lastBy:t.lastBy||null,lastSet:!!t.lastSet,log:t.log||[]};
+  if(await save(()=>D(kind,t.id,site).update({lastAt:entry.at,lastBy:entry.by,lastSet:false,log})))
     toast(`${t.name}: done${site!==S.site?" at "+siteOf(site).name:""}`,["Undo",()=>save(()=>D(kind,t.id,site).update(before))]);
+}
+
+// Set the date a task was last carried out by hand, e.g. when it was done but not ticked off at the time.
+// Stored at midday on that date (now, if it's today) and marked lastSet so it shows without a time.
+async function setTaskDate(kind,t,site,value){
+  const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(value||"");
+  if(!m){toast("Choose a date first");return}
+  const d=new Date(+m[1],+m[2]-1,+m[3],12);
+  const today=iso(new Date())===value;
+  if(!today&&d>new Date()){toast("That date is in the future");return}
+  const at=today?Date.now():d.getTime();
+  const entry={at,by:S.me,note:"Date entered by hand",set:true};
+  const log=[entry,...(t.log||[])].slice(0,30);
+  const before={lastAt:t.lastAt||null,lastBy:t.lastBy||null,lastSet:!!t.lastSet,log:t.log||[]};
+  if(await save(()=>D(kind,t.id,site).update({lastAt:at,lastBy:S.me,lastSet:true,log})))
+    toast(`${t.name}: last done ${lastWhen(at,true)}`,["Undo",()=>save(()=>D(kind,t.id,site).update(before))]);
 }
 
 /* ---------- prove it ---------- */
