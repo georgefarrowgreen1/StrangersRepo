@@ -25,6 +25,8 @@
   h1,h2,p{margin:0}
   h2{font-size:19px}
   .label{text-transform:uppercase;color:var(--accent)}
+  .brand{display:grid;justify-items:center;gap:14px;text-align:center;padding-top:4px}
+  .brand .brandlogo{width:150px}
   .field{display:grid;gap:6px}
   .field label{font-size:14px;font-weight:600}
   input{width:100%;font:inherit;color:inherit}
@@ -51,8 +53,8 @@
 <body>
 <main>
   <section class="panel">
-    <div>
-      <div class="label">Strangers Coffee</div>
+    <div class="brand">
+      <span class="brandlogo" role="img" aria-label="Strangers Coffee Company"></span>
       <h1>Kitchen Diary</h1>
     </div>
 

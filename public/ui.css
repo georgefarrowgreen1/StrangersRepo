@@ -53,6 +53,8 @@ svg.i{width:22px;height:22px;flex:none;fill:none;stroke:currentColor;stroke-widt
   padding:calc(env(safe-area-inset-top,0px) + 8px) 16px 10px;background:linear-gradient(var(--bg) 55%,color-mix(in srgb,var(--bg) 0%,transparent))}
 .wrap{padding-top:calc(env(safe-area-inset-top,0px) + 70px);padding-bottom:calc(env(safe-area-inset-bottom,0px) + 120px)}
 .sidebar{display:none}
+.abrand{display:flex;align-items:center;gap:10px;min-width:0}
+.abrand .brandmark{width:34px}
 /* Keep anything scrolled into view (a focused field, a form) clear of the top bar and the tab bar. */
 html{scroll-padding-top:calc(env(safe-area-inset-top,0px) + 72px);scroll-padding-bottom:calc(env(safe-area-inset-bottom,0px) + 100px)}
 .tabbar{position:fixed;left:14px;right:14px;bottom:calc(env(safe-area-inset-bottom,0px) + 10px);z-index:20;max-width:560px;margin:0 auto;
@@ -72,9 +74,10 @@ html{scroll-padding-top:calc(env(safe-area-inset-top,0px) + 72px);scroll-padding
   html{scroll-padding:24px}
   body{padding-left:286px}
   .wrap{padding-top:calc(env(safe-area-inset-top,0px) + 22px);padding-bottom:48px;max-width:1040px}
-  .sidebar{position:fixed;left:0;top:0;bottom:0;width:286px;box-sizing:border-box;z-index:20;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:10px;
+  .sidebar{position:fixed;left:0;top:0;bottom:0;width:286px;box-sizing:border-box;z-index:20;display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;gap:10px;
     padding:calc(env(safe-area-inset-top,0px) + 16px) 12px 14px;border-right:1px solid var(--line);
     background:var(--glass);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur)}
+  .sidebar .sbrand{width:118px;justify-self:center;margin:4px 0 8px}
   .sidebar .sitebtn{width:100%;justify-content:flex-start}
   .sidebar .sitebtn svg.i{margin-left:auto}
   .snav{display:grid;gap:1px;align-content:start;overflow:auto;margin:0 -4px;padding:0 4px}
