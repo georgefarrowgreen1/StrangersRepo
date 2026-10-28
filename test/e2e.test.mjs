@@ -132,6 +132,28 @@ test("staff journey on the real page", async () => {
   assert.equal(job.data.lastBy, "web:Sam Patel");
   assert.equal(job.data.log.length, 1);
 
+  // Set the date it was last done by hand.
+  const past = await page.evaluate(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 3);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  });
+  if (!(await job1.locator("input[type=date]").isVisible())) await job1.locator(".xmain").click();
+  await job1.locator("input[type=date]").fill(past);
+  await job1.locator(".btn", { hasText: "Save date" }).click();
+  await assert.doesNotReject(waitFor(async () => {
+    const j = await api("get", { path: "sites/cafe/cleaning/job1" });
+    return j.data.lastSet === true && j.data.log.length === 2 && j.data.log[0].set === true;
+  }), "hand-entered last-done date saved");
+  const jobSet = await api("get", { path: "sites/cafe/cleaning/job1" });
+  const savedDay = await page.evaluate((at) => {
+    const d = new Date(at);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }, jobSet.data.lastAt);
+  assert.equal(savedDay, past);
+  assert.equal(jobSet.data.lastBy, "web:Sam Patel");
+  await page.locator("#kList .xrow", { hasText: "Clean coffee machine" }).locator(".pill.bad").waitFor();
+
   // Add an allergen item from the Add button.
   await openSection(page, "allergens");
   assert.equal(await page.locator("#algFormPanel").isHidden(), true, "form closed until Add");
