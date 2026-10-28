@@ -160,17 +160,51 @@ test("staff journey on the real page", async () => {
   await page.click("#addBtn");
   await page.fill("#algName", "Almond croissant");
   await page.locator("#algChecks label", { hasText: /nuts/i }).first().click();
+  // Save to the ASG as well as the Cafe.
+  assert.equal(await page.locator("#alg_sites_cafe").isChecked(), true, "current site always included");
+  assert.equal(await page.locator("#alg_sites_cafe").isDisabled(), true);
+  await page.locator('label[for="alg_sites_asg"]').click();
   await page.click("#algSave");
   await page.locator("#algList .xrow", { hasText: "Almond croissant" }).waitFor();
   const alg = await api("query", { path: "sites/cafe/allergens" });
   assert.equal(alg.docs[0].data.name, "Almond croissant");
   assert.equal(alg.docs[0].data.by, "web:Sam Patel");
+  assert.deepEqual(alg.docs[0].data.sites, ["cafe", "asg"]);
+  await assert.doesNotReject(waitFor(async () => {
+    const a2 = await api("query", { path: "sites/asg/allergens" });
+    return a2.docs.length === 1 && a2.docs[0].data.linkId === alg.docs[0].data.linkId && a2.docs[0].data.contains.length === 1;
+  }), "allergen item copied to the ASG");
+  assert.equal((await api("query", { path: "allergens" })).docs.length, 0, "not copied to unticked sites");
+
+  // A cleaning job sent to all sites; editing it again keeps each site's own done-date.
+  await openSection(page, "cleaning");
+  await page.click("#addBtn");
+  await page.fill("#cleaning_f_name", "Descale kettle");
+  await page.locator('label[for="cleaning_sites_all"]').click();
+  await page.locator("#kFormPanel .btn", { hasText: /^Save$/ }).click();
+  await page.locator("#kList .xrow", { hasText: "Descale kettle" }).waitFor();
+  const findJob = async (base) => (await api("query", { path: base })).docs.find((d) => d.data.name === "Descale kettle");
+  await assert.doesNotReject(waitFor(async () => !!(await findJob("sites/factory/cleaning")) && !!(await findJob("cleaning")) && !!(await findJob("sites/asg/cleaning"))),
+    "cleaning job copied to every site");
+  const factoryJob = await findJob("sites/factory/cleaning");
+  await api("update", { path: `sites/factory/cleaning/${factoryJob.id}`, patch: { lastAt: 1760000000000, lastBy: "web:Factory Person" } });
+  await page.locator("#kList .xrow", { hasText: "Descale kettle" }).locator(".xmain").click();
+  await page.locator("#kList .xrow", { hasText: "Descale kettle" }).locator(".btn", { hasText: "Edit cleaning task" }).click();
+  assert.equal(await page.locator("#cleaning_sites_all").isChecked(), true, "edit form shows the sites it was sent to");
+  await page.fill("#cleaning_f_how", "Citric acid, rinse twice");
+  await page.locator("#kFormPanel .btn", { hasText: /^Save$/ }).click();
+  await assert.doesNotReject(waitFor(async () => (await findJob("sites/factory/cleaning"))?.data.how === "Citric acid, rinse twice"), "edit reaches the other sites");
+  const factoryAfter = await findJob("sites/factory/cleaning");
+  assert.equal(factoryAfter.id, factoryJob.id, "the linked copy is updated, not duplicated");
+  assert.equal(factoryAfter.data.lastAt, 1760000000000, "each site keeps its own done-date");
+  await openSection(page, "allergens");
 
   // Upload an allergen PDF and open it.
   const pdf = Buffer.from("%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n");
   await page.locator("#adList button", { hasText: "Upload" }).click();
   await page.setInputFiles("#adFile", { name: "allergen-matrix.pdf", mimeType: "application/pdf", buffer: pdf });
   await page.fill("#adTitle", "Allergen matrix");
+  await page.locator('label[for="ad_sites_factory"]').click();
   await page.click("#adSave");
   await page.locator("#adMsg", { hasText: "Uploaded to the Cafe" }).waitFor();
   const link = page.locator("#adList").getByRole("link", { name: "Open" }).first();
@@ -179,6 +213,15 @@ test("staff journey on the real page", async () => {
   assert.match(href, /^\/_blob\/[0-9a-f]{32}$/);
   const blob = await page.evaluate(async (u) => { const r = await fetch(u); return { type: r.headers.get("content-type"), size: (await r.arrayBuffer()).byteLength }; }, href);
   assert.deepEqual(blob, { type: "application/pdf", size: pdf.length });
+  // The same file is listed at the Factory; removing it at the Cafe keeps the file for the Factory.
+  const facDocs = await api("query", { path: "sites/factory/allergenDocs" });
+  assert.equal(facDocs.docs.length, 1);
+  assert.equal("/_blob/" + facDocs.docs[0].data.assetId, href);
+  const rm = page.locator("#adList .pdfcard", { hasText: "Allergen matrix" }).locator("button", { hasText: "Remove" });
+  await rm.click(); await rm.click();
+  await assert.doesNotReject(waitFor(async () => (await api("query", { path: "sites/cafe/allergenDocs" })).docs.length === 0), "removed at the Cafe");
+  await page.waitForTimeout(500);
+  assert.equal(await page.evaluate(async (u) => (await fetch(u)).status, href), 200, "file kept while the Factory still lists it");
 
   // Records show names: switch to the Roastery, whose seeded day was ticked by "Seeder".
   await switchSite(page, "Roastery");
