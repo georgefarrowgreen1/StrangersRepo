@@ -1,6 +1,6 @@
 # Deploying and running the Kitchen Diary
 
-The site is one Cloudflare Worker serving the diary's pages and the API they talk to. It runs at **https://strangers.georgefarrowgreen.com**, and **every push to `main` redeploys it automatically** (Cloudflare Workers Builds).
+The site is one Cloudflare Worker serving the diary's pages and the API they talk to. It runs at **https://staffstrangerscoffee.com**, and **every push to `main` redeploys it automatically** (Cloudflare Workers Builds).
 
 | Path | What it is |
 |---|---|
@@ -19,9 +19,9 @@ Data lives in a D1 database (`kitchen-diary`) and allergen PDFs in a KV namespac
 
 ## First deployment (in the Cloudflare dashboard, no terminal)
 
-`georgefarrowgreen.com` must be a domain in the Cloudflare account you use.
+`staffstrangerscoffee.com` must be a domain (zone) in the Cloudflare account you use, with its nameservers pointing at Cloudflare. The site is served at `staffstrangerscoffee.com`; `www.staffstrangerscoffee.com` redirects there.
 
-1. **Free up the address.** If another Worker already uses `strangers.georgefarrowgreen.com`, open it under **Workers & Pages → that Worker → Settings → Domains & Routes** and remove the domain.
+1. **Free up the addresses.** If another Worker already uses `staffstrangerscoffee.com` or `www.staffstrangerscoffee.com`, open it under **Workers & Pages → that Worker → Settings → Domains & Routes** and remove the domain. If the zone already has A, AAAA or CNAME records for either name (for example a parked page from the registrar), delete them under **DNS → Records**, or the deploy can't add its own.
 2. **Connect the repo.** **Workers & Pages → Create → Import a repository**, connect GitHub and pick `StrangersRepo`.
    - Project name: `strangers-kitchen-diary` (it must match `name` in `wrangler.jsonc`).
    - Build command: leave empty, or `npm run build` (it does nothing). Deploy command: `npx wrangler deploy`.

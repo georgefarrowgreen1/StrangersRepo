@@ -1,6 +1,6 @@
 # Strangers Coffee Kitchen Diary
 
-The food safety diary (Safer Food, Better Business) for Strangers Coffee's four Norwich sites, online at **https://strangers.georgefarrowgreen.com**. Staff sign in on a phone, iPad or computer and record the day's checks; managers keep the records an Environmental Health Officer asks to see.
+The food safety diary (Safer Food, Better Business) for Strangers Coffee's four Norwich sites, online at **https://staffstrangerscoffee.com**. Staff sign in on a phone, iPad or computer and record the day's checks; managers keep the records an Environmental Health Officer asks to see.
 
 It runs on Cloudflare (one Worker, a D1 database and a KV store for PDFs), deployed automatically from this repo. **`README-deploy.md`** covers deploying, secrets, backups and running it locally.
 
