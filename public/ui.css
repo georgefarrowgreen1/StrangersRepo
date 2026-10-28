@@ -420,3 +420,8 @@ body.hasfab .toast{bottom:calc(env(safe-area-inset-bottom,0px) + 160px)}
 .applyall .label{margin:0;flex:1 0 100%}
 .applyall input[type=date]{flex:1 1 160px;width:auto;max-width:240px}
 #tTopics .field[hidden]{display:none}
+
+/* "Save to sites" switches in forms and editors */
+.sitepick{display:grid;gap:8px}
+.sitepick .label{margin:0}
+.sitepick .note{margin:0}

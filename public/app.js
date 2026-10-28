@@ -159,6 +159,59 @@ function patchDoc(col,id,patch,exists,base){
 const patchDay=(date,p)=>patchDoc("days",date,p,!!S.days[date],{date});
 const patchWeek=(wk,p)=>patchDoc("weeks",wk,p,!!S.weeks[wk],{week:wk});
 async function save(fn){if(ro())return false;try{await fn();return true}catch(e){fail(e);return false}}
+
+/* ---------- saving to several sites ----------
+   Extra checks, cleaning, HACCP & risk, suppliers, contacts, onboarding and allergens can be saved to more than
+   one site. Every copy carries the same linkId and the list of sites it was sent to (sites). Saving again replaces
+   the linked copy at each ticked site (found by linkId, or by name for items saved before linking), or adds one
+   where there isn't one. Unticking a site leaves its copy alone; Remove only removes the copy at the current site. */
+const MULTI_NAME={extras:"name",cleaning:"name",suppliers:"name",contacts:"name",allergens:"name",allergenDocs:"title",plans:"title",onboarding:"title"};
+const newLinkId=()=>"l"+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+// "Save to sites" switches. The current site is always included; All sites ticks every other one too.
+const PICKERS=new Set();
+// After switching site (or once signed in), lock the new current site on and unlock the others.
+function refreshPickers(){for(const pk of PICKERS)if(pk.el.isConnected)pk.lock()}
+function sitePicker(id){
+  const box=el("div",{class:"toggles"});
+  const all=el("input",{type:"checkbox",id:id+"_all"});
+  box.append(el("label",{for:all.id},all,el("strong",{text:"All sites"})));
+  const cbs=SITES.map(x=>{const cb=el("input",{type:"checkbox",id:id+"_"+x.id,"data-site":x.id});box.append(el("label",{for:cb.id},cb,x.name));return cb});
+  const sync=()=>{all.checked=cbs.every(c=>c.checked)};
+  const pk={onChange:null,
+    el:el("div",{class:"sitepick"},el("div",{class:"label",text:"Save to sites"}),box,
+      el("p",{class:"note",text:"Saved at every ticked site, replacing the same item there. Unticking a site doesn't remove it from that site; use Remove on that site's own list."})),
+    get:()=>cbs.filter(c=>c.checked||c.dataset.site===S.site).map(c=>c.dataset.site),
+    set(list){const on=new Set(Array.isArray(list)?list:[]);for(const c of cbs)c.checked=on.has(c.dataset.site);pk.lock()},
+    lock(){const R=ro();for(const c of cbs){if(c.dataset.site===S.site)c.checked=true;c.disabled=R||c.dataset.site===S.site}all.disabled=R;sync()}};
+  PICKERS.add(pk);
+  all.addEventListener("change",()=>{for(const c of cbs)c.checked=all.checked||c.dataset.site===S.site;sync();pk.onChange&&pk.onChange()});
+  for(const c of cbs)c.addEventListener("change",()=>{sync();pk.onChange&&pk.onChange()});
+  return pk;
+}
+// Save an item here and at the other ticked sites. editId: the item being edited at this site (null for new).
+// old: the item before editing (for its linkId and name). patch: task lists, where only the item's own fields are
+// written (update), so each site keeps its own done-dates and log. match:false never replaces by name (allergen PDFs).
+async function multiSave(kind,sites,data,{editId=null,old=null,patch=false,match=true}={}){
+  if(ro())return null;
+  const here=S.site,linkId=(old&&old.linkId)||data.linkId||newLinkId();
+  sites=[...new Set([here,...(sites||[])])];
+  const v={...data,linkId,sites},now=Date.now();
+  const nm=MULTI_NAME[kind],names=new Set([v[nm],old&&old[nm]].filter(Boolean).map(normT));
+  const ok=await save(()=>editId?(patch?D(kind,editId,here).update(v):D(kind,editId,here).set(v)):C(kind,here).add(patch?{...v,createdAt:now}:v));
+  if(!ok)return null;
+  const done=[siteOf(here).name],fails=[];
+  for(const site of sites.filter(x=>x!==here)){
+    try{
+      const snap=await C(kind,site).get();
+      const m=snap.docs.find(d=>(d.data()||{}).linkId===linkId)||(match?snap.docs.find(d=>{const x=d.data()||{};return !x.linkId&&names.has(normT(x[nm]))}):null);
+      if(m)await(patch?D(kind,m.id,site).update(v):D(kind,m.id,site).set(v));
+      else await C(kind,site).add(patch?{...v,createdAt:now}:v);
+      done.push(siteOf(site).name);
+    }catch(e){console.error(e);fails.push(siteOf(site).name)}
+  }
+  return{linkId,done,fails,where:done.length>1?" to "+done.join(", "):"",
+    warn:fails.length?` Couldn't save to ${fails.join(", ")}; check the connection and save again.`:""};
+}
 function fail(e){
   if(e&&e.code==="invalid_argument"){S.canWrite=false;$("#readonly").hidden=false;renderAll();return}
   if(e&&e.code==="quota_exceeded"){toast("The diary is full. Ask the owner to clear old entries.");return}
@@ -492,20 +545,22 @@ function buildTaskForm(kind){
   const cancel=el("button",{class:"btn ghost",hidden:true,onclick:()=>editTask(kind,null)},"Cancel edit");
   const del=el("button",{class:"btn ghost danger",hidden:true},"Remove");
   armDelete(del,"Remove",async()=>{if(await save(()=>D(kind,editing[kind]).delete())){editTask(kind,null);toast("Removed")}});
+  const pick=sitePicker(kind+"_sites");
   const saveBtn=el("button",{class:"btn",onclick:async()=>{
     const v={};for(const[k]of cfg.fields)v[k]=$(`#${kind}_f_${k}`).value.trim();
     if(!v.name){msg.textContent="Give it a name first.";return}
-    const ok=editing[kind]?await save(()=>D(kind,editing[kind]).update(v)):await save(()=>C(kind).add({...v,createdAt:Date.now()}));
-    if(ok){msg.textContent="";toast(`Saved ${v.name}`);editTask(kind,null)}
+    const old=editing[kind]?S[kind].find(x=>x.id===editing[kind]):null;
+    const r=await multiSave(kind,pick.get(),v,{editId:editing[kind],old,patch:true});
+    if(r){msg.textContent="";toast(`Saved ${v.name}${r.where}.${r.warn}`);editTask(kind,null)}
   }},"Save");
-  box.append(f,el("div",{class:"row"},saveBtn,cancel,del,msg));
-  box._cancel=cancel;box._del=del;
+  box.append(f,pick.el,el("div",{class:"row"},saveBtn,cancel,del,msg));
+  box._cancel=cancel;box._del=del;box._pick=pick;
 }
 function editTask(kind,t){
   const cfg=TASKS[kind];editing[kind]=t?t.id:null;
   $(cfg.title).textContent=t?"Edit "+t.name:"Add a "+cfg.noun;
   for(const[k,,type]of cfg.fields)$(`#${kind}_f_${k}`).value=t?(t[k]||(type==="freq"?"weekly":"")):(type==="freq"?"weekly":"");
-  const box=$(cfg.form);box._cancel.hidden=true;box._del.hidden=!t;
+  const box=$(cfg.form);box._cancel.hidden=true;box._del.hidden=!t;box._pick.set(t&&t.sites);
   setForm(kind,!!t);
 }
 function renderTasks(kind){
@@ -645,15 +700,16 @@ function supForm(){
     const v={};for(const[k]of SUP_FIELDS)v[k]=$("#s_"+k).value.trim();
     if(!v.name){msg.textContent="Add the supplier's name first.";return}
     v.by=S.me;v.at=Date.now();
-    const ok=editSup?await save(()=>D("suppliers",editSup).set(v)):await save(()=>C("suppliers").add(v));
-    if(ok){msg.textContent="";toast(`Saved ${v.name}`);editSupplier(null)}
+    const r=await multiSave("suppliers",pick.get(),v,{editId:editSup,old:editSup?S.suppliers.find(x=>x.id===editSup):null});
+    if(r){msg.textContent="";toast(`Saved ${v.name}${r.where}.${r.warn}`);editSupplier(null)}
   }},"Save supplier");
-  box.append(f,el("div",{class:"row"},saveBtn,cancel,del,msg));box._cancel=cancel;box._del=del;
+  const pick=sitePicker("s_sites");
+  box.append(f,pick.el,el("div",{class:"row"},saveBtn,cancel,del,msg));box._cancel=cancel;box._del=del;box._pick=pick;
 }
 function editSupplier(s){
   editSup=s?s.id:null;$("#sFormTitle").textContent=s?"Edit "+s.name:"Add a supplier";
   for(const[k]of SUP_FIELDS)$("#s_"+k).value=s?(s[k]||""):"";
-  $("#sForm")._cancel.hidden=true;$("#sForm")._del.hidden=!s;
+  $("#sForm")._cancel.hidden=true;$("#sForm")._del.hidden=!s;$("#sForm")._pick.set(s&&s.sites);
   setForm("suppliers",!!s);
 }
 function renderSuppliers(){
@@ -810,6 +866,7 @@ function renderEditor(){
   const del=el("button",{class:"btn ghost danger",hidden:R},"Delete document");
   armDelete(del,"Delete document",async()=>{if(await save(()=>D("plans",P.id).delete())){closePlan();toast("Document deleted")}});
   const hist=(d.history||[]).slice(0,10);
+  const pick=sitePicker("pl_sites");pick.set(d.sites);pick.onChange=()=>{d.sites=pick.get();markDirty()};P.pick=pick;
   box.replaceChildren(
     el("div",{class:"row spread"},back,el("div",{class:"row",style:"gap:8px"},el("span",{class:"pill",text:PL_NAME[k]}),(()=>{const rs=reviewState(d);return el("span",{class:"pill "+rs.cls,text:rs.text})})())),
     remote,
@@ -819,6 +876,7 @@ function renderEditor(){
       el("p",{class:"note",text:legend}),
       el("div",{class:"scroll"},table)),
     el("section",{class:"panel"},el("label",{class:"label",for:"pl_notes",text:"Notes"}),notes),
+    R?null:el("section",{class:"panel"},pick.el),
     el("section",{class:"panel"},el("h3",{text:"History"}),
       hist.length?el("div",{},...hist.map(h=>el("div",{class:"by",text:`${when(h.at)} · ${h.what} · ${nameOf(h.by)}`}))):el("div",{class:"by",text:"No history yet."})),
     R?el("div",{class:"note",text:"You can view this document but not edit it."})
@@ -831,10 +889,12 @@ async function savePlan(){
   const d=P.doc,now=Date.now();
   d.updatedBy=S.me;d.updatedAt=now;
   d.history=[{by:S.me,at:now,what:"Edited"},...(d.history||[])].slice(0,20);
+  d.linkId=d.linkId||newLinkId();d.sites=P.pick?P.pick.get():[S.site];
   const body=clone(d);
   if(JSON.stringify(body).length>250000){toast("This document is too large to save. Split it into two documents.");return}
   P.baseAt=now;
-  if(await save(()=>D("plans",P.id).set(body))){P.dirty=false;P.remote=false;updateSaveBar();toast("Saved")}
+  const r=await multiSave("plans",d.sites,body,{editId:P.id,old:S.plans.find(x=>x.id===P.id),match:false});
+  if(r){P.dirty=false;P.remote=false;updateSaveBar();toast(`Saved${r.where}.${r.warn}`)}
 }
 function onPlansSnapshot(){
   renderPlansList();
@@ -1182,9 +1242,11 @@ function renderOnbEditor(){
   const del=el("button",{class:"btn ghost danger"},"Delete document");
   armDelete(del,"Delete document",async()=>{if(await save(()=>D("onboarding",P.id).delete())){closeOnb();toast("Document deleted")}});
   const hist=(d.history||[]).slice(0,10);
+  const pick=sitePicker("ob_sites");pick.set(d.sites);pick.onChange=()=>{d.sites=pick.get();obDirty()};P.pick=pick;
   box.replaceChildren(
     el("div",{class:"row spread"},back,el("div",{class:"row",style:"gap:8px"},el("span",{class:"pill",text:d.category||"Document"}),toggle)),
     remote,...main,
+    R?null:el("section",{class:"panel"},pick.el),
     el("section",{class:"panel"},el("h3",{text:"History"}),
       hist.length?el("div",{},...hist.map(h=>el("div",{class:"by",text:`${when(h.at)} · ${h.what} · ${nameOf(h.by)}`}))):el("div",{class:"by",text:"No history yet."})),
     R?el("div",{class:"note",text:"You can read this document but not edit it."})
@@ -1198,10 +1260,12 @@ async function saveOnb(){
   d.sections=(d.sections||[]).filter(s=>(s.heading||"").trim()||(s.body||"").trim());
   d.updatedBy=S.me;d.updatedAt=now;
   d.history=[{by:S.me,at:now,what:"Edited"},...(d.history||[])].slice(0,20);
+  d.linkId=d.linkId||newLinkId();d.sites=P.pick?P.pick.get():[S.site];
   const body=clone(d);
   if(JSON.stringify(body).length>250000){toast("This document is too large to save. Split it into two documents.");return}
   P.baseAt=now;
-  if(await save(()=>D("onboarding",P.id).set(body))){P.dirty=false;P.remote=false;obSaveBar();toast("Saved")}
+  const r=await multiSave("onboarding",d.sites,body,{editId:P.id,old:S.onboarding.find(x=>x.id===P.id),match:false});
+  if(r){P.dirty=false;P.remote=false;obSaveBar();toast(`Saved${r.where}.${r.warn}`)}
 }
 function onOnbSnapshot(){
   renderOnbList();
@@ -1236,15 +1300,16 @@ function conForm(){
     if(!v.name){msg.textContent="Add a name or company first.";return}
     if(!v.phone&&!v.email&&!v.outOfHours){msg.textContent="Add a phone number or email so people can reach them.";return}
     v.by=S.me;v.at=Date.now();
-    const ok=editCon?await save(()=>D("contacts",editCon).set(v)):await save(()=>C("contacts").add(v));
-    if(ok){msg.textContent="";toast(`Saved ${v.name}`);editContact(null)}
+    const r=await multiSave("contacts",pick.get(),v,{editId:editCon,old:editCon?S.contacts.find(x=>x.id===editCon):null});
+    if(r){msg.textContent="";toast(`Saved ${v.name}${r.where}.${r.warn}`);editContact(null)}
   }},"Save contact");
-  box.append(f,el("div",{class:"row"},saveBtn,cancel,del,msg));box._cancel=cancel;box._del=del;box._msg=msg;
+  const pick=sitePicker("c_sites");
+  box.append(f,pick.el,el("div",{class:"row"},saveBtn,cancel,del,msg));box._cancel=cancel;box._del=del;box._msg=msg;box._pick=pick;
 }
 function editContact(c,typeOnly){
   editCon=c?c.id:null;$("#cFormTitle").textContent=c?"Edit "+c.name:"Add a contact";
   for(const[k]of CON_FIELDS)$("#c_"+k).value=c?(c[k]||(k==="type"?"Other":"")):(k==="type"?(typeOnly||CON_TYPES[0]):"");
-  $("#cForm")._cancel.hidden=true;$("#cForm")._del.hidden=!c;
+  $("#cForm")._cancel.hidden=true;$("#cForm")._del.hidden=!c;$("#cForm")._pick.set(c&&c.sites);
   setForm("contacts",!!(c||typeOnly));
 }
 function copyBtn(text){
@@ -1436,9 +1501,12 @@ function editAlg(it){
   $("#algName").value=it?it.name:"";$("#algSupplier").value=it?(it.source||""):"";$("#algNotes").value=it?(it.notes||""):"";
   const has=new Set(it?it.contains||[]:[]);
   document.querySelectorAll("#algChecks input").forEach(cb=>cb.checked=has.has(cb.value));
-  $("#algCancel").hidden=true;$("#algDelete").hidden=!it;
+  $("#algCancel").hidden=true;$("#algDelete").hidden=!it;algPick.set(it&&it.sites);
   setForm("allergens",!!it);
 }
+
+const algPick=sitePicker("alg_sites");$("#algSites").replaceWith(algPick.el);
+const adPick=sitePicker("ad_sites");$("#adSites").replaceWith(adPick.el);
 
 /* ---------- review ---------- */
 function reviewPeriod(){
@@ -1510,7 +1578,13 @@ function renderAllergenDocs(){
     if(!ro()&&S.assets){
       del=el("button",{class:"btn ghost sm danger",type:"button"},"Remove");
       armDelete(del,"Remove",async()=>{
-        if(await save(()=>D("allergenDocs",d.id).delete())){try{await S.assets.delete(d.assetId)}catch(e){}toast("PDF removed")}
+        if(await save(()=>D("allergenDocs",d.id).delete())){
+          // The same file may be listed at other sites: only delete it once no site uses it.
+          let used=false;
+          try{for(const x of SITES){const q=await C("allergenDocs",x.id).get();if(q.docs.some(e=>(e.data()||{}).assetId===d.assetId)){used=true;break}}}catch(e){used=true}
+          if(!used){try{await S.assets.delete(d.assetId)}catch(e){}}
+          toast(`PDF removed from the ${curSite().name}`);
+        }
       });
     }
     box.append(el("div",{class:"pdfcard glass"+(i?" old":"")},
@@ -1533,9 +1607,11 @@ async function uploadAllergenPdf(){
   try{
     const up=await S.assets.upload(file,{type:"application/pdf"});
     const doc={title:$("#adTitle").value.trim()||file.name.replace(/\.pdf$/i,""),note:$("#adNote").value.trim(),fileName:file.name,assetId:up.id,size:up.sizeBytes||file.size,by:S.me,at:Date.now()};
-    try{await C("allergenDocs",site).add(doc)}catch(e){try{await S.assets.delete(up.id)}catch(_){}throw e}
-    adBusy=false;$("#adTitle").value="";$("#adNote").value="";$("#adFile").value="";setAdFile(null);
-    $("#adMsg").textContent=`Uploaded to the ${siteOf(site).name}.`;
+    // One stored file, listed at every ticked site. multiSave reports a failure itself, so no throw here.
+    const r=await multiSave("allergenDocs",adPick.get(),doc,{match:false});
+    if(!r){try{await S.assets.delete(up.id)}catch(_){}adBusy=false;$("#adSave").disabled=!adFile;$("#adMsg").textContent="Couldn't save the PDF. Try again.";return}
+    adBusy=false;$("#adTitle").value="";$("#adNote").value="";$("#adFile").value="";setAdFile(null);adPick.set([]);
+    $("#adMsg").textContent=`Uploaded to the ${r.done.join(", ")}.${r.warn}`;
   }catch(e){
     adBusy=false;const c=e&&e.code;
     $("#adMsg").textContent=c==="too_large"?"That PDF is too large (20 MB limit).":c==="unsupported_type"?"That file couldn't be stored as a PDF. Try saving it as a PDF again.":c==="quota_or_state"?"The diary's file storage is full. Remove an old PDF and try again.":c==="rate_limited"?"Too many uploads just now. Wait a minute and try again.":c==="invalid_argument"?"You don't have permission to add files to this diary.":"Couldn't upload the PDF. Check your connection and try again.";
@@ -1954,7 +2030,7 @@ $("#pubGo").addEventListener("click",async()=>{
   }catch(e){fail(e);pubNote="Publishing stopped part-way. Check each site's setup, then try again.";renderPublish()}
 });
 
-function renderAll(){renderSites();renderNav();renderHead();renderAddBtn();renderDay();renderWeek();renderHistory();renderTasks("extras");renderTasks("cleaning");renderProve();renderAllergenDocs();renderAllergens();renderPlansList();renderSuppliers();renderContacts();renderStaff();renderOnbList();renderInspList();renderReview();renderSetup()}
+function renderAll(){refreshPickers();renderSites();renderNav();renderHead();renderAddBtn();renderDay();renderWeek();renderHistory();renderTasks("extras");renderTasks("cleaning");renderProve();renderAllergenDocs();renderAllergens();renderPlansList();renderSuppliers();renderContacts();renderStaff();renderOnbList();renderInspList();renderReview();renderSetup()}
 
 /* ---------- tabs ---------- */
 const TABS=["day","week","history","extras","cleaning","prove","allergens","eho","plans","suppliers","contacts","staff","onboarding","review","setup","records","more"];
@@ -2055,8 +2131,8 @@ $("#algSave").addEventListener("click",async()=>{
   const name=$("#algName").value.trim();if(!name){$("#algConfirm").textContent="Give the item a name first.";return}
   const contains=[...document.querySelectorAll("#algChecks input:checked")].map(c=>c.value);
   const body={name,source:$("#algSupplier").value.trim(),contains,notes:$("#algNotes").value.trim(),by:S.me,at:Date.now()};
-  const ok=S.editAlg?await save(()=>D("allergens",S.editAlg).set(body)):await save(()=>C("allergens").add(body));
-  if(ok){$("#algConfirm").textContent="";toast(`Saved ${name}`);editAlg(null)}
+  const r=await multiSave("allergens",algPick.get(),body,{editId:S.editAlg,old:S.editAlg?S.allergens.find(x=>x.id===S.editAlg):null});
+  if(r){$("#algConfirm").textContent="";toast(`Saved ${name}${r.where}.${r.warn}`);editAlg(null)}
 });
 $("#algCancel").addEventListener("click",()=>editAlg(null));
 $("#algSearch").addEventListener("input",renderAllergens);
