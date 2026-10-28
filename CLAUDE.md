@@ -1,6 +1,6 @@
 # Strangers Coffee Kitchen Diary
 
-The staff food safety diary (Safer Food, Better Business) for Strangers Coffee's four Norwich sites, at **https://strangers.georgefarrowgreen.com**. This website is the only copy of the diary: it once mirrored a Claude artifact in the owner's account and synced with it hourly, but that sync has been removed and the page is now this project's own.
+The staff food safety diary (Safer Food, Better Business) for Strangers Coffee's four Norwich sites, at **https://staffstrangerscoffee.com**. This website is the only copy of the diary: it once mirrored a Claude artifact in the owner's account and synced with it hourly, but that sync has been removed and the page is now this project's own.
 
 Read `README.md`, `README-deploy.md`, `docs/data-model.md`, `docs/runtime-api.md` and `docs/design.md` before changing anything. The person running you is the host. Ask them before anything that costs money, changes DNS, or needs a secret.
 

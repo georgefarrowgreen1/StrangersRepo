@@ -13,8 +13,11 @@ export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
     const local = url.hostname === "localhost" || url.hostname === "127.0.0.1";
-    if (url.protocol === "http:" && !local) {
+    // One address for the site, so sign-in cookies always match: https and no www.
+    const www = url.hostname.startsWith("www.");
+    if ((url.protocol === "http:" || www) && !local) {
       url.protocol = "https:";
+      if (www) url.hostname = url.hostname.slice(4);
       return Response.redirect(url.toString(), 301);
     }
     let res: Response;
