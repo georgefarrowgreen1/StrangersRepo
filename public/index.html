@@ -293,6 +293,7 @@
         <div class="field"><label class="label" for="tStart">Start date</label><input type="date" id="tStart"></div>
       </div>
       <div class="label">Date trained</div>
+      <div class="row applyall"><label class="label" for="tAllDate">Same date for every topic</label><input type="date" id="tAllDate"><button class="btn ghost sm" type="button" id="tAllApply">Apply to all topics</button></div>
       <div class="fields" id="tTopics"></div>
       <div class="field"><label class="label" for="tNotes">Notes</label><textarea id="tNotes" placeholder="e.g. Level 2 certificate from CIEH, expires Oct 2029."></textarea></div>
       <div class="label">Save to sites</div>
@@ -304,6 +305,11 @@
     <div class="stat3" id="tStats"></div>
     <div class="list glass" id="tList"></div>
     <section class="panel onlywide"><h2>Training chart</h2><div id="tMatrix"></div></section>
+    <section class="panel" id="tTopicsPanel" hidden>
+      <h2>Topics for this site</h2>
+      <p class="note">Untick any topic this site doesn't need. It's hidden from the training records and charts here and no longer counted as training to do. Dates already recorded are kept.</p>
+      <div class="toggles" id="tTopicToggles"></div>
+    </section>
   </div>
 
   <!-- REVIEW -->

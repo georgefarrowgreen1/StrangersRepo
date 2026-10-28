@@ -34,7 +34,8 @@ const PROVE={
   probeIce:{label:"Probe check – iced water",min:-1,max:1,hint:"Pass between −1°C and 1°C. Replace or recalibrate the probe if outside."},
   probeBoil:{label:"Probe check – boiling water",min:99,max:101,hint:"Pass between 99°C and 101°C. Replace or recalibrate the probe if outside."},
   other:{label:"Other check",manual:true,hint:"Record the reading if there is one, and choose pass or fail."}};
-const TOPICS=[["hygiene","Personal hygiene & handwashing"],["cross","Cross-contamination"],["cleaning","Cleaning"],["chilling","Chilling"],["cooking","Cooking & reheating"],["allergens","Allergens"],["diary","Opening & closing checks"],["l2","Level 2 Food Hygiene certificate"]];
+const ALL_TOPICS=[["hygiene","Personal hygiene & handwashing"],["cross","Cross-contamination"],["cleaning","Cleaning"],["chilling","Chilling"],["cooking","Cooking & reheating"],["allergens","Allergens"],["diary","Opening & closing checks"],["l2","Level 2 Food Hygiene certificate"]];
+const TOPICS=ALL_TOPICS;
 const REVIEW_QS=[
   ["problems","Were there any problems recorded in the diary this period?"],
   ["supplier","Have you started using a new supplier or new types of food?"],
@@ -97,6 +98,7 @@ function normSettings(raw){
   s.closedDays=Array.isArray(s.closedDays)?s.closedDays:[];
   s.hide=s.hide&&typeof s.hide==="object"?s.hide:{};
   s.proveOff=Array.isArray(s.proveOff)?s.proveOff:[];
+  s.trainingOff=Array.isArray(s.trainingOff)?s.trainingOff:[];
   s.info=s.info&&typeof s.info==="object"?s.info:{};
   s.fresh=!raw;
   return s;
@@ -1278,9 +1280,18 @@ function renderContacts(){
 }
 
 /* ---------- staff training ---------- */
+// The training topics this site uses: Setup's trainingOff lists the ones it doesn't need.
+// Dates already recorded for a switched-off topic are kept, just not shown or counted.
+const siteTopics=()=>TOPICS.filter(([k])=>!S.settings.trainingOff.includes(k));
 function staffForm(){
   const box=$("#tTopics");
-  for(const[k,lbl]of TOPICS)box.append(el("div",{class:"field"},el("label",{class:"label",for:"tt_"+k,text:lbl}),el("input",{type:"date",id:"tt_"+k})));
+  for(const[k,lbl]of TOPICS)box.append(el("div",{class:"field","data-topic":k},el("label",{class:"label",for:"tt_"+k,text:lbl}),el("input",{type:"date",id:"tt_"+k})));
+  // Most training happens on one day: fill every topic shown with one date.
+  $("#tAllApply").addEventListener("click",()=>{
+    const d=$("#tAllDate").value;if(!d){$("#tMsg").textContent="Choose a date to apply first.";$("#tAllDate").focus();return}
+    for(const[k]of siteTopics())$("#tt_"+k).value=d;
+    $("#tMsg").textContent="";toast(`${short(d)} applied to all ${siteTopics().length} topics. Save to keep it.`);
+  });
   const sb=$("#tSites");
   const all=el("input",{type:"checkbox",id:"ts_all"});
   sb.append(el("label",{for:"ts_all"},all,el("strong",{text:"All sites"})));
@@ -1319,6 +1330,7 @@ function editStaff(p){
   S.editStaff=p?p.id:null;$("#tFormTitle").textContent=p?"Edit "+p.name:"Add a staff member";
   $("#tName").value=p?p.name:"";$("#tRole").value=p?(p.role||""):"";$("#tStart").value=p?(p.start||""):"";$("#tNotes").value=p?(p.notes||""):"";
   for(const[k]of TOPICS)$("#tt_"+k).value=p&&p.topics&&p.topics[k]?p.topics[k].date:"";
+  $("#tAllDate").value="";
   const on=p&&Array.isArray(p.sites)&&p.sites.length?p.sites:[S.site];
   document.querySelectorAll("#tSites input[data-site]").forEach(b=>b.checked=on.includes(b.dataset.site)||b.dataset.site===S.site&&!!p);
   $("#ts_all").checked=[...document.querySelectorAll("#tSites input[data-site]")].every(b=>b.checked);
@@ -1330,7 +1342,24 @@ async function trainedToday(p,k){
   const topics={...(p.topics||{}),[k]:{date:today(),by:S.me}};
   if(await save(()=>D("staff",p.id).update({topics})))toast(`${p.name}: ${TOPICS.find(t=>t[0]===k)[1]} recorded`);
 }
+// Untick a topic and it's no longer shown or counted at this site. Saved straight to the site's settings.
+async function setTopicOff(k,on){
+  const off=S.settings.trainingOff.filter(x=>x!==k);if(!on)off.push(k);
+  if(off.length>=TOPICS.length){toast("Keep at least one topic");renderStaff();return}
+  const patch={trainingOff:off,updatedBy:S.me,updatedAt:Date.now()};
+  const ok=await save(()=>S.settings.fresh?D("settings","main",S.site).set({...storable(S.settings),...patch}):D("settings","main",S.site).update(patch));
+  if(ok)toast(`${TOPICS.find(t=>t[0]===k)[1]} ${on?"added back for":"removed from"} the ${curSite().name}`);else renderStaff();
+}
 function renderStaff(){
+  const TOPICS=siteTopics();
+  for(const n of document.querySelectorAll("#tTopics [data-topic]"))n.hidden=!TOPICS.some(([k])=>k===n.dataset.topic);
+  const tb0=$("#tTopicToggles");tb0.replaceChildren();
+  for(const[k,lbl]of ALL_TOPICS){
+    const id="tto_"+k,cb=el("input",{type:"checkbox",id,disabled:ro()});cb.checked=TOPICS.some(t=>t[0]===k);
+    cb.addEventListener("change",()=>setTopicOff(k,cb.checked));
+    tb0.append(el("label",{for:id},cb,lbl));
+  }
+  $("#tTopicsPanel").hidden=ro();
   const list=[...S.staff].sort((a,b)=>a.name.localeCompare(b.name));
   const todo=p=>TOPICS.filter(([k])=>!(p.topics&&p.topics[k]));
   const full=list.filter(p=>!todo(p).length).length,gaps=list.length-full;
@@ -1426,7 +1455,7 @@ function renderReview(){
   for(let dt=start;dt<=t;dt=addDays(dt,1)){const st=dayStatus(S.days[dt]);if(isClosed(dt)&&!st.any)continue;days++;if(st.complete)comp++;if(st.issue)temps++}
   const xOver=S.extras.filter(x=>taskState(x).overdue).length,kOver=S.cleaning.filter(x=>taskState(x).overdue).length;
   const pFail=S.prove.filter(r=>r.date>=start&&r.pass===false).length;
-  const untrained=S.staff.filter(p=>TOPICS.some(([k])=>!(p.topics&&p.topics[k]))).length;
+  const untrained=S.staff.filter(p=>siteTopics().some(([k])=>!(p.topics&&p.topics[k]))).length;
   // What happened since the last review, each linked to where it's recorded.
   const nPlans=S.plans.filter(d=>reviewState(d).overdue).length,lastInsp=inspSorted()[0],nEho=lastInsp?(lastInsp.issues||[]).filter(i=>!i.done).length:0;
   const pl=(n,w)=>`${n} ${w}${n===1?"":"s"}`;
@@ -1635,7 +1664,7 @@ function hubSub(id){
     case "plans":{const due=S.plans.filter(d=>reviewState(d).overdue).length;return S.plans.length?`${n(S.plans.length,"document")}${due?` · ${due} due for review`:""}`:"None yet: start from a template"}
     case "suppliers":return S.suppliers.length?n(S.suppliers.length,"supplier"):"None listed yet";
     case "contacts":{const e=S.contacts.filter(c=>c.outOfHours).length;return S.contacts.length?`${n(S.contacts.length,"contact")}${e?` · ${e} out of hours`:""}`:"None listed yet"}
-    case "staff":{const g=S.staff.filter(p=>TOPICS.some(([k])=>!(p.topics&&p.topics[k]))).length;return S.staff.length?(g?`${g} of ${S.staff.length} with training to do`:"Everyone trained"):"No one listed yet"}
+    case "staff":{const g=S.staff.filter(p=>siteTopics().some(([k])=>!(p.topics&&p.topics[k]))).length;return S.staff.length?(g?`${g} of ${S.staff.length} with training to do`:"Everyone trained"):"No one listed yet"}
     case "onboarding":return S.onboarding.length?n(S.onboarding.length,"document"):"None yet: start from a template";
     case "review":{const{due}=reviewPeriod(),left=Math.round((parse(due)-parse(t))/864e5);return left<0?`Overdue since ${nice(due)}`:left===0?"Due today":`Next due ${nice(due)}`}
     case "setup":return "Checks, fridges, opening days and sections";
