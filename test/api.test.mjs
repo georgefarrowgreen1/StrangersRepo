@@ -113,6 +113,8 @@ test("passwords: rules, change, and new passwords end other sessions", async () 
 test("roles: staff record entries but can't change manager sections or use admin", async () => {
   assert.equal((await db("set", { path: "sites/cafe/days/2026-10-01", data: { date: "2026-10-01" } }, STAFF)).status, 200);
   assert.equal((await db("set", { path: "sites/cafe/cleaning/c1", data: { name: "Mop" } }, STAFF)).status, 200);
+  assert.equal((await db("set", { path: "deliveries/d1", data: { supplier: "Dairy", outcome: "accepted" } }, STAFF)).status, 200, "staff record deliveries");
+  assert.equal((await db("set", { path: "sites/factory/maintenance/m1", data: { title: "Fix door" } }, STAFF)).status, 200, "staff report maintenance");
   for (const path of ["sites/cafe/settings/main", "config/shared", "sites/cafe/suppliers/s1", "plans/p1", "sites/asg/reviews/2026-10-01"]) {
     const r = await db("set", { path, data: { a: 1 } }, STAFF);
     assert.equal(r.status, 403, path);

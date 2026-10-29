@@ -19,7 +19,7 @@ Each site has its own diary. The site button at the top (or top of the sidebar) 
 
 - **Today**: progress through the day (temperatures, opening checks, closing checks, sign-off), anything overdue at the site, fridge and freezer readings with advice when one is out of range, the checklists, problems and changes, and one-tap sign-off as the signed-in person.
 - **Week**: the week's days at a glance, end-of-week checks, notes and sign-off.
-- **Records**: extra checks, cleaning schedule, Prove it checks (pass or fail worked out as you type), allergens (with search, "free from" filters and the allergen PDF).
+- **Records**: extra checks, cleaning schedule, Prove it checks (pass or fail worked out as you type), allergens (with search, "free from" filters and the allergen PDF), deliveries (temperature, packaging and order checks, accept or reject) and maintenance (equipment problems and jobs, per site or all sites together).
 - **More**: last 4 weeks, and for managers the last EHO inspection report, HACCP plans and risk assessments, suppliers, contacts, staff training, onboarding documents, the 4-weekly review and Setup.
 
 On phones, Today, Week, Records and More are tabs at the bottom. On iPads in landscape and computers, every section is in a sidebar.

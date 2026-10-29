@@ -53,7 +53,7 @@ const SITES=[
   {id:"asg",name:"ASG",addr:"14 All Saints Green, Norwich, NR1 3NA"},
   {id:"factory",name:"Factory",addr:"122 Ber Street, Norwich, NR1 3ES"}];
 const siteOf=id=>SITES.find(s=>s.id===id)||SITES[0];
-const OPT_TABS=[["week","End of week"],["extras","Extra checks"],["cleaning","Cleaning schedule"],["prove","Prove it"],["allergens","Allergens"],["eho","Last EHO inspection report"],["plans","HACCP & risk"],["suppliers","Suppliers"],["contacts","Contacts"],["staff","Staff training"],["onboarding","Onboarding"],["review","4-weekly review"]];
+const OPT_TABS=[["week","End of week"],["extras","Extra checks"],["cleaning","Cleaning schedule"],["prove","Prove it"],["allergens","Allergens"],["deliveries","Deliveries"],["maintenance","Maintenance"],["eho","Last EHO inspection report"],["plans","HACCP & risk"],["suppliers","Suppliers"],["contacts","Contacts"],["staff","Staff training"],["onboarding","Onboarding"],["review","4-weekly review"]];
 const WEEKDAYS=[[1,"Monday"],[2,"Tuesday"],[3,"Wednesday"],[4,"Thursday"],[5,"Friday"],[6,"Saturday"],[0,"Sunday"]];
 const LISTS=[["opening","Opening"],["closing","Closing"],["weekly","End-of-week"]];
 
@@ -80,7 +80,7 @@ function toast(m,action){
 
 const S={site:(()=>{try{const s=localStorage.getItem("sfbb.site");return SITES.some(x=>x.id===s)?s:"roastery"}catch(e){return"roastery"}})(),
   cfg:null,sum:{},subs:[],allergenDocs:[],assets:null,shared:null,
-  db:null,user:null,me:null,canWrite:true,settings:DEFAULT_SETTINGS,days:{},weeks:{},allergens:[],reviews:[],extras:[],cleaning:[],suppliers:[],contacts:[],plans:[],plan:null,onboarding:[],onb:null,inspections:[],insp:null,staff:[],prove:[],
+  db:null,user:null,me:null,canWrite:true,settings:DEFAULT_SETTINGS,days:{},weeks:{},allergens:[],reviews:[],extras:[],cleaning:[],deliveries:[],maintenance:[],suppliers:[],contacts:[],plans:[],plan:null,onboarding:[],onb:null,inspections:[],insp:null,staff:[],prove:[],
   date:today(),week:monday(today()),editAlg:null,editStaff:null,names:{},rev:{}};
 S.role="";S.myName="";
 const ro=()=>!S.canWrite||!S.db;
@@ -274,7 +274,8 @@ const FORMS={
   allergens:{panel:"#algFormPanel",add:"Add item",reset:()=>editAlg(null)},
   suppliers:{panel:"#sFormPanel",add:"Add supplier",reset:()=>editSupplier(null)},
   contacts:{panel:"#cFormPanel",add:"Add contact",reset:()=>editContact(null)},
-  staff:{panel:"#tFormPanel",add:"Add person",reset:()=>editStaff(null)}};
+  staff:{panel:"#tFormPanel",add:"Add person",reset:()=>editStaff(null)},
+  maintenance:{panel:"#mFormPanel",add:"Report a job",reset:()=>editMaint(null)}};
 const formOpen={};
 function setForm(tab,open){
   const f=FORMS[tab],p=$(f.panel);formOpen[tab]=!!open;p.hidden=ro()||!open;
@@ -684,6 +685,158 @@ function renderProve(){
   }
   $("#pFormPanel").hidden=ro();
   resolveNames(ids);
+}
+
+/* ---------- deliveries ----------
+   SFBB "Delivery" safe method: chilled food 8°C or below (ideally 5°C), frozen −15°C or below (ideally −18°C),
+   packaging undamaged, and what you ordered. Today's date and the time are added automatically. */
+const DLV_TEMP={chilled:{label:"Chilled food",ok:5,max:8,ph:"e.g. 3.4"},frozen:{label:"Frozen food",ok:-18,max:-15,ph:"e.g. -19"}};
+function dlvTempState(kind,v){
+  if(v==null||v===""||isNaN(v))return null;const r=DLV_TEMP[kind];v=Number(v);
+  return v<=r.ok?{cls:"ok",text:`${v}°C · good`}:v<=r.max?{cls:"warn",text:`${v}°C · OK, ideally ${r.ok}°C`}:{cls:"bad",text:`${v}°C · too warm, reject`};
+}
+const DV={supplier:"",other:false,packaging:"",order:""};
+function delivForm(){
+  const yn=(key,box)=>{box.replaceChildren();
+    for(const[v,l]of[["ok","Yes"],["no","No"]]){const b=el("button",{type:"button","aria-pressed":String(DV[key]===v),onclick:()=>{DV[key]=v;yn(key,box);dlvVerdict()}},l);box.append(b)}};
+  yn("packaging",$("#dvPack"));yn("order",$("#dvOrder"));
+  for(const k of["chilled","frozen"])$("#dv_"+k).addEventListener("input",dlvVerdict);
+  $("#dvNoTemp").addEventListener("change",()=>{for(const k of["chilled","frozen"]){$("#dv_"+k).disabled=$("#dvNoTemp").checked;if($("#dvNoTemp").checked)$("#dv_"+k).value=""}dlvVerdict()});
+  $("#dvAccept").addEventListener("click",()=>saveDelivery("accepted"));
+  $("#dvReject").addEventListener("click",()=>saveDelivery("rejected"));
+  resetDelivery();
+}
+function resetDelivery(){
+  Object.assign(DV,{supplier:"",other:false,packaging:"",order:""});
+  for(const x of["#dvOther","#dvItems","#dvNote","#dv_chilled","#dv_frozen"]){const n=$(x);if(n){n.value="";n.disabled=false}}
+  if($("#dvNoTemp"))$("#dvNoTemp").checked=false;
+  if($("#dvDate"))$("#dvDate").value=today();
+  if($("#dvMsg"))$("#dvMsg").textContent="";
+  if($("#dvPack")){for(const b of document.querySelectorAll("#dvPack button,#dvOrder button"))b.setAttribute("aria-pressed","false");renderDvSuppliers();dlvVerdict()}
+}
+function renderDvSuppliers(){
+  const box=$("#dvSup");if(!box)return;box.replaceChildren();
+  const names=[...new Set(S.suppliers.map(s=>s.name).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  for(const nm of names)box.append(el("button",{type:"button",role:"radio","aria-checked":String(!DV.other&&DV.supplier===nm),class:!DV.other&&DV.supplier===nm?"on":"",
+    onclick:()=>{DV.supplier=nm;DV.other=false;renderDvSuppliers()}},nm));
+  box.append(el("button",{type:"button",role:"radio","aria-checked":String(DV.other),class:DV.other?"on":"",onclick:()=>{DV.other=true;DV.supplier="";renderDvSuppliers();$("#dvOther").focus()}},names.length?"Other supplier":"Type a supplier"));
+  $("#dvOtherWrap").hidden=!DV.other;
+  $("#dvSupNote").hidden=names.length>0;
+}
+function dlvProblems(){
+  const p=[];
+  for(const k of["chilled","frozen"]){const s=dlvTempState(k,$("#dv_"+k).value);if(s&&s.cls==="bad")p.push(DLV_TEMP[k].label.toLowerCase()+" too warm")}
+  if(DV.packaging==="no")p.push("packaging damaged");
+  if(DV.order==="no")p.push("not what was ordered");
+  return p;
+}
+function dlvVerdict(){
+  for(const k of["chilled","frozen"]){const s=dlvTempState(k,$("#dv_"+k).value),o=$("#dv_"+k+"_st");o.hidden=!s;if(s){o.className="pill "+s.cls;o.textContent=s.text}}
+  const p=dlvProblems(),r=$("#dvResult");
+  r.hidden=!p.length;if(p.length){r.className="result bad";r.replaceChildren(svgi(ICON.warn),el("span",{text:`Reject, or write what you did: ${p.join(", ")}.`}))}
+}
+async function saveDelivery(outcome){
+  if(ro())return;
+  const msg=$("#dvMsg");
+  const supplier=(DV.other?$("#dvOther").value:DV.supplier).trim();
+  if(!supplier){msg.textContent="Choose the supplier first.";return}
+  const num=k=>{const v=$("#dv_"+k).value;return v===""?null:Number(v)};
+  const chilled=num("chilled"),frozen=num("frozen"),noTemp=$("#dvNoTemp").checked;
+  if(!noTemp&&chilled==null&&frozen==null){msg.textContent="Enter the chilled or frozen temperature, or tick “No chilled or frozen food”.";return}
+  if(!DV.packaging||!DV.order){msg.textContent="Answer both checks: packaging and what you ordered.";return}
+  const note=$("#dvNote").value.trim(),p=dlvProblems();
+  if(outcome==="rejected"&&!note){msg.textContent="Write why it was rejected and what happens next.";$("#dvNote").focus();return}
+  if(outcome==="accepted"&&p.length&&!note){msg.textContent=`Something failed (${p.join(", ")}). Reject it, or write why you accepted it.`;$("#dvNote").focus();return}
+  const sup=S.suppliers.find(s=>s.name===supplier);
+  const now=Date.now(),date=$("#dvDate").value||today();
+  const v={date,at:now,supplier,supplierId:sup?sup.id:null,items:$("#dvItems").value.trim(),chilled,frozen,noTemp,
+    packaging:DV.packaging,order:DV.order,outcome,note,by:S.me};
+  if(await save(()=>C("deliveries").add(v))){resetDelivery();toast(`${supplier}: delivery ${outcome}`)}
+}
+function renderDeliveries(){
+  const box=$("#dvList");if(!box)return;box.replaceChildren();const ids=[];
+  renderDvSuppliers();
+  const recs=[...S.deliveries].sort((a,b)=>(b.date||"").localeCompare(a.date||"")||(b.at||0)-(a.at||0));
+  const rj=recs.filter(r=>r.outcome==="rejected").length;
+  const p=$("#dvPill");p.textContent=`${recs.length} recorded${rj?` · ${rj} rejected`:""}`;p.className="pill "+(rj?"warn":recs.length?"ok":"");
+  if(!recs.length)box.append(el("div",{class:"empty glass",text:"No deliveries recorded yet. Check each one as it arrives, then Accept or Reject it above."}));
+  let cur=null,grp=null;
+  for(const r of recs.slice(0,200)){
+    if(r.date!==cur){cur=r.date;grp=el("div",{class:"list glass"});box.append(el("div",{class:"label",text:r.date===today()?"Today":longDate(r.date)}),grp)}
+    ids.push(r.by);
+    const temps=[r.chilled!=null?`chilled ${r.chilled}°C`:"",r.frozen!=null?`frozen ${r.frozen}°C`:"",r.noTemp?"no chilled or frozen":""].filter(Boolean).join(", ");
+    let del=null;if(!ro()){del=el("button",{class:"btn ghost sm danger",type:"button"},"Remove record");armDelete(del,"Remove record",()=>save(()=>D("deliveries",r.id).delete()))}
+    grp.append(xrow("d"+r.id,{
+      title:r.supplier,sub:[r.at?time(r.at):"",r.items,temps].filter(Boolean).join(" · "),
+      right:[el("span",{class:"pill "+(r.outcome==="rejected"?"bad":"ok"),text:r.outcome==="rejected"?"Rejected":"Accepted"})],
+      details:[xfacts([["Delivered",r.items],["Chilled",r.chilled!=null?dlvTempState("chilled",r.chilled).text:""],["Frozen",r.frozen!=null?dlvTempState("frozen",r.frozen).text:""],
+        ["Temperatures",r.noTemp?"No chilled or frozen food":""],["Packaging",r.packaging==="ok"?"Not damaged":"Damaged"],["Order",r.order==="ok"?"What we ordered":"Not what we ordered"],
+        [r.outcome==="rejected"?"Why rejected":"Note",r.note],["Checked by",nameOf(r.by)+(r.at?", "+when(r.at):"")]]),del?el("div",{class:"row"},del):null]}));
+  }
+  $("#dvFormPanel").hidden=ro();
+  resolveNames(ids);
+}
+
+/* ---------- maintenance ----------
+   Equipment problems and general jobs, per site. All sites shows every site's open and finished jobs together. */
+const MT_PRI=[["urgent","Urgent","Unsafe, or stops us working","bad"],["soon","Soon","Needs doing this week","warn"],["later","When possible","Not holding anything up",""]];
+const mtPri=k=>MT_PRI.find(p=>p[0]===k)||MT_PRI[1];
+let editMt=null,maintAll=false;
+function maintForm(){
+  const pr=$("#mPri");pr.replaceChildren();
+  for(const[k,l,h]of MT_PRI)pr.append(el("button",{type:"button",role:"radio","data-pri":k,onclick:()=>setMtPri(k)},el("b",{text:l}),el("span",{text:h})));
+  $("#mSave").addEventListener("click",saveMaint);
+  armDelete($("#mDelete"),"Remove job",async()=>{if(await save(()=>D("maintenance",editMt).delete())){editMaint(null);toast("Job removed")}});
+  for(const b of document.querySelectorAll("#mScope button"))b.addEventListener("click",()=>{maintAll=b.dataset.scope==="all";renderMaint()});
+  editMaint(null);
+}
+function setMtPri(k){for(const b of document.querySelectorAll("#mPri button")){const on=b.dataset.pri===k;b.classList.toggle("on",on);b.setAttribute("aria-checked",String(on))}$("#mPri").dataset.v=k}
+function editMaint(m){
+  editMt=m?m.id:null;
+  $("#mFormTitle").textContent=m?"Edit "+m.title:"Report a maintenance job";
+  $("#mTitle").value=m?m.title:"";$("#mArea").value=m?(m.area||""):"";$("#mDetails").value=m?(m.details||""):"";
+  setMtPri(m?m.priority:"soon");$("#mDelete").hidden=!m;$("#mMsg").textContent="";
+  setForm("maintenance",!!m);
+}
+async function saveMaint(){
+  const title=$("#mTitle").value.trim();if(!title){$("#mMsg").textContent="Say what needs doing first.";return}
+  const v={title,area:$("#mArea").value.trim(),details:$("#mDetails").value.trim(),priority:$("#mPri").dataset.v||"soon",at:Date.now()};
+  const ok=editMt?await save(()=>D("maintenance",editMt).update(v)):await save(()=>C("maintenance").add({...v,status:"open",reportedBy:S.me,reportedAt:Date.now(),log:[]}));
+  if(ok){toast(`${editMt?"Saved":"Reported"}: ${title}`);editMaint(null)}
+}
+async function setMaintDone(m,site,done,note){
+  const log=[{at:Date.now(),by:S.me,what:done?"Done":"Reopened",note:note||""},...(m.log||[])].slice(0,30);
+  const v=done?{status:"done",doneBy:S.me,doneAt:Date.now(),fixNote:note||"",log}:{status:"open",doneBy:null,doneAt:null,log};
+  if(await save(()=>D("maintenance",m.id,site).update(v)))toast(`${m.title}: ${done?"done":"reopened"}${site!==S.site?" at the "+siteOf(site).name:""}`);
+}
+function renderMaint(){
+  const box=$("#mList");if(!box)return;box.replaceChildren();const ids=[],R=ro();
+  for(const b of document.querySelectorAll("#mScope button"))b.setAttribute("aria-pressed",String((b.dataset.scope==="all")===maintAll));
+  const items=maintAll?SITES.flatMap(x=>(x.id===S.site?S.maintenance:(S.sum[x.id]&&S.sum[x.id].maintenance)||[]).map(m=>({m,site:x.id})))
+    :S.maintenance.map(m=>({m,site:S.site}));
+  const rank={urgent:0,soon:1,later:2};
+  const open=items.filter(x=>x.m.status!=="done").sort((a,b)=>(rank[a.m.priority]??1)-(rank[b.m.priority]??1)||(a.m.reportedAt||0)-(b.m.reportedAt||0));
+  const done=items.filter(x=>x.m.status==="done").sort((a,b)=>(b.m.doneAt||0)-(a.m.doneAt||0)).slice(0,30);
+  const row=({m,site})=>{
+    ids.push(m.reportedBy,m.doneBy);const pr=mtPri(m.priority),isDone=m.status==="done";
+    const note=el("input",{type:"text",placeholder:"What was done (optional)","aria-label":"What was done for "+m.title});
+    const hist=(m.log||[]).slice(0,5).map(e=>{ids.push(e.by);return el("li",{},el("span",{text:when(e.at)}),el("span",{class:"s",text:`${e.what} · ${nameOf(e.by)}${e.note?" · "+e.note:""}`}))});
+    return xrow("m"+site+m.id,{
+      title:m.title,
+      sub:[maintAll?siteOf(site).name:"",m.area,isDone?`done ${short(iso(new Date(m.doneAt)))}, ${nameOf(m.doneBy)}`:`reported ${short(iso(new Date(m.reportedAt||m.at||Date.now())))}, ${nameOf(m.reportedBy)}`].filter(Boolean).join(" · "),
+      right:[el("span",{class:"pill "+(isDone?"ok":pr[3]),text:isDone?"Done":pr[1]})],
+      details:[m.details?el("p",{class:"how",text:m.details}):null,
+        isDone&&m.fixNote?xfacts([["What was done",m.fixNote]]):null,
+        R?null:isDone?el("div",{class:"row"},el("button",{class:"btn ghost sm",type:"button",onclick:()=>setMaintDone(m,site,false)},"Reopen"))
+          :el("div",{class:"row"},note,el("button",{class:"btn sm",type:"button",onclick:()=>setMaintDone(m,site,true,note.value.trim())},"Mark as done")),
+        hist.length?el("ul",{class:"hist"},...hist):null,
+        R||site!==S.site?null:el("div",{class:"row"},el("button",{class:"btn ghost sm",type:"button",onclick:()=>editMaint(m)},"Edit job"))]});
+  };
+  if(!items.length)box.append(el("div",{class:"empty glass",text:maintAll?"Nothing reported at any site.":`Nothing reported at the ${curSite().name}.${R?"":" Tap Report a job when something needs fixing."}`}));
+  if(open.length)box.append(el("div",{class:"label"+(open.some(x=>x.m.priority==="urgent")?" bad":""),text:`Open · ${open.length}`}),el("div",{class:"list glass"},...open.map(row)));
+  if(done.length)box.append(el("div",{class:"label",text:`Done · ${done.length}`}),el("div",{class:"list glass"},...done.map(row)));
+  $("#mFormPanel").hidden=R||!formOpen.maintenance;
+  resolveNames(ids.filter(Boolean));
 }
 
 /* ---------- suppliers ---------- */
@@ -1664,6 +1817,8 @@ const ICON={
   prove:'<path d="M10 14V5a2 2 0 014 0v9a4 4 0 11-4 0z"/>',
   allergens:'<path d="M5 19c0-9 6-14 15-14 0 9-5 15-14 15zM5 19l7-7"/>',
   eho:'<path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/>',
+  deliveries:'<path d="M3.5 7.5L12 3l8.5 4.5v9L12 21l-8.5-4.5z"/><path d="M3.5 7.5L12 12l8.5-4.5M12 12v9M7.8 5.2l8.5 4.6"/>',
+  maintenance:'<path d="M14.7 6.3a4 4 0 015 5l-1.4-1.4-2.1.7-.7 2.1 1.4 1.4a4 4 0 01-5-5L4.6 17.4a1.9 1.9 0 002.7 2.7l8.3-8.3"/>',
   plans:'<path d="M9 3h6M10 3v6l-5 9a2 2 0 002 3h10a2 2 0 002-3l-5-9V3"/>',
   suppliers:'<path d="M3 7h11v9H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="18" r="1.8"/><circle cx="17" cy="18" r="1.8"/>',
   contacts:'<path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a1 1 0 01-1 1A16 16 0 014 5a1 1 0 011-1z"/>',
@@ -1683,6 +1838,7 @@ const NAV=[
   {id:"day",t:"Today",grp:"diary",ic:"today"},{id:"week",t:"This week",grp:"diary",ic:"week"},{id:"history",t:"Last 4 weeks",grp:"manage",ic:"history",sub:"Days complete, gaps and problems"},
   {id:"extras",t:"Extra checks",grp:"records",ic:"extras",tile:"teal"},{id:"cleaning",t:"Cleaning",grp:"records",ic:"cleaning",tile:"blue"},
   {id:"prove",t:"Prove it",grp:"records",ic:"prove",tile:"orange"},{id:"allergens",t:"Allergens",grp:"records",ic:"allergens",tile:"red"},
+  {id:"deliveries",t:"Deliveries",grp:"records",ic:"deliveries",tile:"indigo"},{id:"maintenance",t:"Maintenance",grp:"records",ic:"maintenance",tile:"purple"},
   {id:"eho",t:"Last EHO inspection report",grp:"manage",ic:"eho",tile:"green"},{id:"plans",t:"HACCP & risk",grp:"manage",ic:"plans",tile:"purple"},
   {id:"suppliers",t:"Suppliers",grp:"manage",ic:"suppliers",tile:"orange"},{id:"contacts",t:"Contacts",grp:"manage",ic:"contacts",tile:"green"},
   {id:"staff",t:"Staff training",grp:"manage",ic:"staff",tile:"teal"},{id:"onboarding",t:"Onboarding",grp:"manage",ic:"onboarding",tile:"indigo"},
@@ -1703,6 +1859,7 @@ function siteState(id){
 // Small status shown beside a section in lists ("1 overdue").
 function navBadge(id){
   if(id==="cleaning"||id==="extras"){const n=S[id].filter(x=>taskState(x).overdue).length;return n?{cls:"bad",text:`${n} overdue`}:null}
+  if(id==="maintenance"){const n=S.maintenance.filter(m=>m.status!=="done"&&m.priority==="urgent").length;return n?{cls:"bad",text:`${n} urgent`}:null}
   return null;
 }
 function renderSites(){
@@ -1738,6 +1895,9 @@ function hubSub(id){
     case "history":{let c=0,tr=0;for(let i=1;i<=28;i++){const d=addDays(t,-i),st=dayStatus(S.days[d]);if(isClosed(d)&&!st.any)continue;tr++;if(st.complete)c++}return `${c} of ${tr} days complete`}
     case "eho":{const l=inspSorted()[0];if(!l)return "No inspection recorded";const o=(l.issues||[]).filter(i=>!i.done).length;return `Rating ${l.rating??"–"} · ${o?n(o,"issue")+" open":"no open issues"}`}
     case "plans":{const due=S.plans.filter(d=>reviewState(d).overdue).length;return S.plans.length?`${n(S.plans.length,"document")}${due?` · ${due} due for review`:""}`:"None yet: start from a template"}
+    case "deliveries":{const td=S.deliveries.filter(d=>d.date===t),rj=td.filter(d=>d.outcome==="rejected").length,l=[...S.deliveries].sort((a,b)=>(b.at||0)-(a.at||0))[0];
+      return td.length?`Today: ${n(td.length,"delivery").replace("deliverys","deliveries")}${rj?` · ${rj} rejected`:""}`:l?`Last: ${l.supplier}, ${short(l.date)}`:"No deliveries recorded yet"}
+    case "maintenance":{const o=S.maintenance.filter(m=>m.status!=="done"),u=o.filter(m=>m.priority==="urgent").length;return o.length?`${n(o.length,"open job")}${u?` · ${u} urgent`:""}`:"Nothing reported"}
     case "suppliers":return S.suppliers.length?n(S.suppliers.length,"supplier"):"None listed yet";
     case "contacts":{const e=S.contacts.filter(c=>c.outOfHours).length;return S.contacts.length?`${n(S.contacts.length,"contact")}${e?` · ${e} out of hours`:""}`:"None listed yet"}
     case "staff":{const g=S.staff.filter(p=>siteTopics().some(([k])=>!(p.topics&&p.topics[k]))).length;return S.staff.length?(g?`${g} of ${S.staff.length} with training to do`:"Everyone trained"):"No one listed yet"}
@@ -2069,10 +2229,10 @@ $("#pubGo").addEventListener("click",async()=>{
   }catch(e){fail(e);pubNote="Publishing stopped part-way. Check each site's setup, then try again.";renderPublish()}
 });
 
-function renderAll(){refreshPickers();renderSites();renderNav();renderHead();renderAddBtn();renderDay();renderWeek();renderHistory();renderTasks("extras");renderTasks("cleaning");renderProve();renderAllergenDocs();renderAllergens();renderPlansList();renderSuppliers();renderContacts();renderStaff();renderOnbList();renderInspList();renderReview();renderSetup()}
+function renderAll(){refreshPickers();renderSites();renderNav();renderHead();renderAddBtn();renderDay();renderWeek();renderHistory();renderTasks("extras");renderTasks("cleaning");renderProve();renderDeliveries();renderMaint();renderAllergenDocs();renderAllergens();renderPlansList();renderSuppliers();renderContacts();renderStaff();renderOnbList();renderInspList();renderReview();renderSetup()}
 
 /* ---------- tabs ---------- */
-const TABS=["day","week","history","extras","cleaning","prove","allergens","eho","plans","suppliers","contacts","staff","onboarding","review","setup","records","more"];
+const TABS=["day","week","history","extras","cleaning","prove","allergens","deliveries","maintenance","eho","plans","suppliers","contacts","staff","onboarding","review","setup","records","more"];
 function show(tab,opts){
   if(!TABS.includes(tab))tab="day";
   if(!canTab(tab)){if(S.role==="staff"&&MANAGER_TABS.has(tab)&&!(opts&&opts.quiet))toast("That section is for managers.");tab="day"}
@@ -2108,10 +2268,10 @@ function switchSite(id){
   if(adBusy){toast("Wait for the upload to finish before switching site.");return}
   if(S.plan)closePlan();if(S.insp)closeInsp();if(S.onb)closeOnb();
   S.site=id;try{localStorage.setItem("sfbb.site",id)}catch(e){}
-  Object.assign(S,{days:{},weeks:{},allergens:[],allergenDocs:[],reviews:[],extras:[],cleaning:[],suppliers:[],contacts:[],plans:[],onboarding:[],inspections:[],staff:[],prove:[],rev:{}});
+  Object.assign(S,{days:{},weeks:{},allergens:[],allergenDocs:[],reviews:[],extras:[],cleaning:[],deliveries:[],maintenance:[],suppliers:[],contacts:[],plans:[],onboarding:[],inspections:[],staff:[],prove:[],rev:{}});
   S.settings=S.sum[id]&&S.sum[id].ready?S.sum[id].settings:normSettings(null);S.cfg=activeCfg(S.settings);
   SE=null;setupDirty=false;pubNote="";$("#setupMsg").textContent="";
-  editTask("extras",null);editTask("cleaning",null);editSupplier(null);editContact(null);editStaff(null);editAlg(null);
+  editTask("extras",null);editTask("cleaning",null);editMaint(null);resetDelivery();editSupplier(null);editContact(null);editStaff(null);editAlg(null);
   setAdFile(null);
   for(const x of["#problems","#wkNotes","#revNotes","#adTitle","#adNote"])$(x).value="";
   editStaff(null);
@@ -2136,7 +2296,9 @@ function subscribeSite(){
   list("reviews","reviews",renderReview,C("reviews",site).orderBy("date","desc").limit(50));
   list("extras","extras",()=>{renderTasks("extras");renderReview()});
   list("cleaning","cleaning",()=>{renderTasks("cleaning");renderReview()});
-  list("suppliers","suppliers",renderSuppliers);
+  list("suppliers","suppliers",()=>{renderSuppliers();renderDeliveries()});
+  list("deliveries","deliveries",renderDeliveries,C("deliveries",site).orderBy("at","desc").limit(400));
+  list("maintenance","maintenance",renderMaint);
   list("contacts","contacts",renderContacts);
   list("plans","plans",()=>{onPlansSnapshot();renderReview()});
   list("onboarding","onboarding",onOnbSnapshot);
@@ -2148,11 +2310,13 @@ function subscribeSummaries(){
   const err=()=>{};
   const upd=()=>{renderSites();renderNav();if(S.tab==="day")renderDay();renderPublish()};
   for(const x of SITES){
-    const sm=S.sum[x.id]={settings:normSettings(null),days:{},extras:[],cleaning:[],got:{}};
+    const sm=S.sum[x.id]={settings:normSettings(null),days:{},extras:[],cleaning:[],maintenance:[],got:{}};
     const mark=k=>{sm.got[k]=true;sm.ready=["settings","days","extras","cleaning"].every(n=>sm.got[n]);upd()};
     D("settings","main",x.id).onSnapshot(s=>{sm.settings=normSettings(s.exists?s.data():null);mark("settings")},err);
     C("days",x.id).orderBy("date","desc").limit(14).onSnapshot(q=>{const m={};for(const d of q.docs)m[d.id]=d.data();sm.days=m;mark("days")},err);
     for(const k of["extras","cleaning"])C(k,x.id).onSnapshot(q=>{sm[k]=q.docs.map(d=>({id:d.id,...d.data()}));mark(k)},err);
+    // Every site's maintenance jobs, for Maintenance → All sites.
+    C("maintenance",x.id).onSnapshot(q=>{sm.maintenance=q.docs.map(d=>({id:d.id,...d.data()}));if(S.tab==="maintenance"&&maintAll)renderMaint()},err);
   }
   S.db.doc("config/shared").onSnapshot(s=>{S.shared=s.exists?s.data():null;if(!setupDirty){SE=setupDraft();buildSetup()}renderPublish()},err);
 }
@@ -2184,7 +2348,7 @@ $("#revSave").addEventListener("click",async()=>{
 document.querySelectorAll(".note.intro").forEach(n=>{n.setAttribute("title","Tap to read more");n.addEventListener("click",()=>n.classList.toggle("full"))});
 
 /* ---------- boot ---------- */
-buildAlgChecks();buildTaskForm("extras");buildTaskForm("cleaning");proveForm();supForm();conForm();staffForm();editStaff(null);
+buildAlgChecks();buildTaskForm("extras");buildTaskForm("cleaning");proveForm();delivForm();maintForm();supForm();conForm();staffForm();editStaff(null);
 applyTabs();renderAll();
 (async()=>{
   const[db,user,assets]=await Promise.all([window.claude?.use?.("db"),window.claude?.use?.("user"),window.claude?.use?.("assets")]);

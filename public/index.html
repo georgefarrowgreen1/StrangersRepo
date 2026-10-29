@@ -164,6 +164,50 @@
   </div>
 
   <!-- PROVE IT -->
+  <!-- DELIVERIES -->
+  <div data-panel="deliveries" class="stack" hidden>
+    <section class="panel" id="dvFormPanel">
+      <h2>Check a delivery</h2>
+      <div class="label">Supplier</div>
+      <div class="methods" id="dvSup" role="radiogroup" aria-label="Supplier"></div>
+      <p class="by" id="dvSupNote" hidden>Suppliers added in Suppliers appear here to tap.</p>
+      <div class="field" id="dvOtherWrap" hidden><label class="label" for="dvOther">Supplier name</label><input type="text" id="dvOther" placeholder="e.g. Local bakery"></div>
+      <div class="fields">
+        <div class="field wide"><label class="label" for="dvItems">What was delivered (optional)</label><input type="text" id="dvItems" placeholder="e.g. Milk ×20, cream, pastries"></div>
+        <div class="field"><label class="label" for="dv_chilled">Chilled food (°C)</label><input type="number" step="0.1" inputmode="decimal" id="dv_chilled" placeholder="8°C or below"><span class="pill" id="dv_chilled_st" hidden></span></div>
+        <div class="field"><label class="label" for="dv_frozen">Frozen food (°C)</label><input type="number" step="0.1" inputmode="decimal" id="dv_frozen" placeholder="−15°C or below"><span class="pill" id="dv_frozen_st" hidden></span></div>
+      </div>
+      <div class="toggles"><label for="dvNoTemp"><input type="checkbox" id="dvNoTemp">No chilled or frozen food in this delivery</label></div>
+      <div class="qa"><span>Packaging not damaged?</span><div class="seg" id="dvPack" role="group" aria-label="Packaging not damaged"></div></div>
+      <div class="qa"><span>Is it what you ordered?</span><div class="seg" id="dvOrder" role="group" aria-label="Is it what you ordered"></div></div>
+      <div class="fields">
+        <div class="field"><label class="label" for="dvDate">Date</label><input type="date" id="dvDate"></div>
+        <div class="field wide"><label class="label" for="dvNote">Notes, or why it was rejected</label><textarea id="dvNote" placeholder="e.g. Cream at 11°C, sent back with the driver. Supplier crediting the invoice."></textarea></div>
+      </div>
+      <div class="result" id="dvResult" hidden></div>
+      <div class="row"><button class="btn" id="dvAccept">Accept delivery</button><button class="btn ghost danger" id="dvReject">Reject delivery</button><span class="by" id="dvMsg" role="status"></span></div>
+    </section>
+    <div class="row spread"><div class="label">Recorded deliveries</div><span class="pill" id="dvPill"></span></div>
+    <div class="stack tight" id="dvList"></div>
+  </div>
+
+  <!-- MAINTENANCE -->
+  <div data-panel="maintenance" class="stack" hidden>
+    <section class="panel formpanel" id="mFormPanel" hidden>
+      <h2 id="mFormTitle">Report a maintenance job</h2>
+      <div class="fields">
+        <div class="field wide"><label class="label" for="mTitle">What needs doing</label><input type="text" id="mTitle" placeholder="e.g. Coffee machine steam wand leaking"></div>
+        <div class="field"><label class="label" for="mArea">Equipment or area</label><input type="text" id="mArea" placeholder="e.g. Coffee machine"></div>
+        <div class="field wide"><label class="label" for="mDetails">Details (optional)</label><textarea id="mDetails" placeholder="e.g. Drips constantly; engineer number in Contacts."></textarea></div>
+      </div>
+      <div class="label">How urgent</div>
+      <div class="methods pri" id="mPri" role="radiogroup" aria-label="How urgent"></div>
+      <div class="row"><button class="btn" id="mSave">Save job</button><button class="btn ghost danger" id="mDelete" hidden>Remove job</button><span class="by" id="mMsg"></span></div>
+    </section>
+    <div class="row spread"><div class="seg" id="mScope" role="group" aria-label="Which sites"><button type="button" data-scope="site">This site</button><button type="button" data-scope="all">All sites</button></div></div>
+    <div class="stack tight" id="mList"></div>
+  </div>
+
   <div data-panel="prove" class="stack" hidden>
     <section class="panel" id="pFormPanel">
       <h2>Record a check</h2>

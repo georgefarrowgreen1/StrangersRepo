@@ -69,6 +69,7 @@ test("staff journey on the real page", async () => {
   COOKIE = (await ctx.cookies()).filter((c) => c.name === "sfbb_session").map((c) => `${c.name}=${c.value}`).join("");
   await api("set", { path: "settings/main", data: settings("10 Dove Street") });
   await api("set", { path: "sites/cafe/settings/main", data: settings("21 Pottergate") });
+  await api("set", { path: "suppliers/s1", data: { name: "Northern Dairy", supplies: "Milk, cream" } });
   await api("set", { path: "sites/cafe/cleaning/job1", data: { name: "Clean coffee machine", how: "Backflush", freq: "daily", who: "Barista", createdAt: Date.now(), log: [] } });
   await api("set", { path: "days/2026-10-01", data: { date: "2026-10-01", opening: { items: { o1: true }, by: "web:Seeder", at: Date.now() } } });
 
@@ -304,7 +305,64 @@ test("staff journey on the real page", async () => {
   await page.locator("#avatarBtn", { hasText: "AB" }).waitFor();
   assert.deepEqual(await accountMenu(page), ["Switch person", "Set a quick PIN", "Change password", "Sign out"]);
   await page.locator("#tabbar .tab", { hasText: "Records" }).click();
-  assert.deepEqual(await page.locator("#recordsHub .lrow b").allTextContents(), ["Extra checks", "Cleaning", "Prove it", "Allergens"]);
+  assert.deepEqual(await page.locator("#recordsHub .lrow b").allTextContents(), ["Extra checks", "Cleaning", "Prove it", "Allergens", "Deliveries", "Maintenance"]);
+
+  // Staff check a delivery: a supplier from the Roastery's list, cream too warm, so it's rejected with a reason.
+  const alexCookie = (await ctx.cookies()).map((c) => `${c.name}=${c.value}`).join("; ");
+  await openSection(page, "deliveries");
+  await page.locator("#dvSup button", { hasText: "Northern Dairy" }).click();
+  await page.fill("#dvItems", "Milk ×20, cream");
+  await page.fill("#dv_chilled", "11");
+  await page.locator("#dv_chilled_st", { hasText: "too warm, reject" }).waitFor();
+  await page.locator("#dvPack button", { hasText: "Yes" }).click();
+  await page.locator("#dvOrder button", { hasText: "Yes" }).click();
+  await page.locator("#dvResult", { hasText: "chilled food too warm" }).waitFor();
+  await page.click("#dvAccept");
+  await page.locator("#dvMsg", { hasText: "Something failed" }).waitFor();
+  await page.click("#dvReject");
+  await page.locator("#dvMsg", { hasText: "Write why it was rejected" }).waitFor();
+  await page.fill("#dvNote", "Cream at 11°C, sent back with the driver.");
+  await page.click("#dvReject");
+  await page.locator("#dvList .xrow", { hasText: "Northern Dairy" }).locator(".pill.bad", { hasText: "Rejected" }).waitFor();
+  const dv = (await api("query", { path: "deliveries" })).docs[0].data;
+  assert.equal(dv.outcome, "rejected");
+  assert.equal(dv.chilled, 11);
+  assert.equal(dv.date, await page.evaluate(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }), "today's date added");
+  assert.equal(dv.by, "web:Alex Brown");
+  assert.ok(dv.supplierId, "linked to the supplier");
+  // A typed supplier with no chilled or frozen food, accepted.
+  await page.locator("#dvSup button", { hasText: "Other supplier" }).click();
+  await page.fill("#dvOther", "Local bakery");
+  await page.locator('label[for="dvNoTemp"]').click();
+  await page.locator("#dvPack button", { hasText: "Yes" }).click();
+  await page.locator("#dvOrder button", { hasText: "Yes" }).click();
+  await page.click("#dvAccept");
+  await page.locator("#dvList .xrow", { hasText: "Local bakery" }).locator(".pill.ok", { hasText: "Accepted" }).waitFor();
+
+  // Staff report a maintenance job here; All sites shows it with the Cafe's job.
+  await fetch(`${srv.base}/api/db/set`, { method: "POST", headers: { "content-type": "application/json", cookie: alexCookie },
+    body: JSON.stringify({ path: "sites/cafe/maintenance/cm1", data: { title: "Dishwasher not draining", area: "Dishwasher", priority: "urgent", status: "open", reportedBy: "web:Sam Patel", reportedAt: Date.now(), at: Date.now(), log: [] } }) });
+  await openSection(page, "maintenance");
+  await page.click("#addBtn");
+  await page.fill("#mTitle", "Grinder burrs need replacing");
+  await page.fill("#mArea", "Grinder");
+  await page.locator("#mPri button", { hasText: "When possible" }).click();
+  await page.click("#mSave");
+  await page.locator("#mList .xrow", { hasText: "Grinder burrs" }).waitFor();
+  assert.equal(await page.locator("#mList .xrow", { hasText: "Dishwasher" }).count(), 0, "this site only");
+  await page.locator("#mScope button", { hasText: "All sites" }).click();
+  await page.locator("#mList .xrow", { hasText: "Dishwasher not draining" }).locator(".pill.bad", { hasText: "Urgent" }).waitFor();
+  assert.match(await page.locator("#mList .xrow", { hasText: "Dishwasher" }).innerText(), /Cafe/);
+  // Mark the Cafe's job done from the all-sites list.
+  const dish = page.locator("#mList .xrow", { hasText: "Dishwasher" });
+  await dish.locator(".xmain").click();
+  await dish.locator("input[type=text]").fill("Cleared the filter");
+  await dish.locator(".btn", { hasText: "Mark as done" }).click();
+  await assert.doesNotReject(waitFor(async () => (await api("get", { path: "sites/cafe/maintenance/cm1" })).data.status === "done"), "done at the Cafe");
+  const cm = (await api("get", { path: "sites/cafe/maintenance/cm1" })).data;
+  assert.equal(cm.fixNote, "Cleared the filter");
+  assert.equal(cm.doneBy, "web:Alex Brown");
+  await page.locator("#mScope button", { hasText: "This site" }).click();
   await page.locator("#tabbar .tab", { hasText: "More" }).click();
   assert.deepEqual(await page.locator("#moreHub .lrow b").allTextContents(), ["Last 4 weeks", "Switch person", "Set a quick PIN", "Change password", "Sign out"]);
   const refused = await fetch(`${srv.base}/api/db/set`, { method: "POST", headers: { "content-type": "application/json", cookie: (await ctx.cookies()).map((c) => `${c.name}=${c.value}`).join("; ") },
@@ -367,7 +425,7 @@ test("staff journey on the real page", async () => {
 async function openSection(page, tab) {
   const tabs = { day: "Today", week: "Week" };
   if (tabs[tab]) return page.locator("#tabbar .tab", { hasText: tabs[tab] }).click();
-  const name = { history: "Last 4 weeks", extras: "Extra checks", cleaning: "Cleaning", prove: "Prove it", allergens: "Allergens", eho: "Last EHO inspection report",
+  const name = { history: "Last 4 weeks", extras: "Extra checks", cleaning: "Cleaning", prove: "Prove it", allergens: "Allergens", deliveries: "Deliveries", maintenance: "Maintenance", eho: "Last EHO inspection report",
     plans: "HACCP & risk", suppliers: "Suppliers", contacts: "Contacts", staff: "Staff training", onboarding: "Onboarding", review: "4-weekly review", setup: "Setup" }[tab];
   for (const hub of ["Records", "More"]) {
     await page.locator("#tabbar .tab", { hasText: hub }).click();
