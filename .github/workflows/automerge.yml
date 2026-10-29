@@ -1,0 +1,33 @@
+# Squash-merges each pull request into main by itself once the Tests check passes, so nobody has to
+# press Merge. Cloudflare then deploys main as usual. The "Tests must pass" rule on main is what makes
+# it wait: if Tests fails, the pull request stays open until it's fixed.
+#
+# To hold a change back, open it as a draft pull request (or convert it to a draft): drafts are skipped.
+# Marking it "Ready for review" turns auto-merge on.
+name: Auto-merge
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  automerge:
+    # Only pull requests into main from branches in this repository (never from forks), and not drafts.
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.base.ref == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Turn on squash auto-merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.html_url }}
+        # If the checks have already passed, GitHub won't queue auto-merge, so merge straight away instead.
+        # The rule on main still refuses either one unless Tests has passed.
+        run: gh pr merge --auto --squash --delete-branch "$PR" || gh pr merge --squash --delete-branch "$PR"

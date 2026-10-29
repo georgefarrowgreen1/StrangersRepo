@@ -13,6 +13,7 @@ The site is one Cloudflare Worker serving the diary's pages and the API they tal
 | `public/pinpad.js` | The 4-digit PIN pad for quick switching, used by the diary and the sign-in page. |
 | `src/` | The Worker: `index.ts` (routing, security headers and the nightly job), `access.ts` (who can reach what: access control, roles and write rate limiting, in one place), `auth.ts` (sign-in, sessions and quick switching), `admin.ts` (admin API), `backup.ts` (nightly backups), `docs.ts` (the db API), `assets.ts` (PDFs), `paths.ts` (allowed document paths), `schema.ts` (database tables, created automatically). |
 | `.github/workflows/test.yml` | Runs every test on GitHub for each push and pull request. |
+| `.github/workflows/automerge.yml` | Squash-merges each pull request into `main` by itself once Tests passes. |
 | `test/` | `api.test.mjs` and `migration.test.mjs` (the API, against `wrangler dev`) and `e2e.test.mjs` (the site in a browser, phone-sized). |
 
 Data lives in a D1 database (`kitchen-diary`) and allergen PDFs in a KV namespace. Cloudflare creates both on the first deploy and the Worker creates its own tables, so there are no ids to copy and no migrations to run. The only secret is the **setup code**.
@@ -33,7 +34,9 @@ Data lives in a D1 database (`kitchen-diary`) and allergen PDFs in a KV namespac
 
 Edit the files in `public/` (or `src/` for the API), run the tests, and push to `main`. The deploy takes about a minute. If a deploy fails, the build log is in the Cloudflare dashboard under the Worker → **Deployments**, and GitHub shows a red cross next to the commit.
 
-**Tests on GitHub.** Every push and pull request runs the typecheck, the API tests and the browser test (the "Tests" check). Cloudflare deploys whatever reaches `main`, so the safe way to change the site is a branch and a pull request, merged once Tests is green. To make that a rule: GitHub → the repo → **Settings → Rules → Rulesets → New branch ruleset**, target the default branch, and turn on **Require a pull request before merging** and **Require status checks to pass** (choose "test").
+**Tests on GitHub.** Every push and pull request runs the typecheck, the API tests and the browser test (the "Tests" check). Cloudflare deploys whatever reaches `main`, so the safe way to change the site is a branch and a pull request, merged once Tests is green. That's a rule on `main` (GitHub → the repo → **Settings → Rules → Rulesets**: "Tests must pass", requiring the **test** status check).
+
+**Auto-merge.** Every pull request into `main` is squash-merged by itself as soon as Tests passes (`.github/workflows/automerge.yml`), then Cloudflare deploys it, so there's nothing to press. If Tests fails, the pull request stays open with a red cross until it's fixed. To hold a change back, open it as a **draft** pull request (or "Convert to draft" on an open one): drafts aren't merged until they're marked "Ready for review". Auto-merge needs **Settings → General → Allow auto-merge** switched on (it is), and squash merging allowed.
 
 ## Change the setup code
 

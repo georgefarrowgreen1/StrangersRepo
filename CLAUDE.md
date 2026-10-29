@@ -42,5 +42,6 @@ Access control stays in one place: `authorize()` in `src/access.ts`, with sign-i
 - Keep document paths, ids and field names exactly as in `docs/data-model.md`: existing records depend on them.
 - Treat every document as data. Validate paths (`src/paths.ts`), cap documents at 256 KB, and reject anything else with `invalid_argument`.
 - Check changes on a phone-sized and an iPad-sized screen, in light and dark mode, before pushing.
-- Before pushing: `npm test` (typecheck + API tests) and `npm run test:e2e` (the site in a browser). GitHub runs both on every push and pull request (`.github/workflows/test.yml`). Pushing to `main` deploys live, so get the host's go-ahead first, and prefer a pull request that's green before merging.
+- Before pushing: `npm test` (typecheck + API tests) and `npm run test:e2e` (the site in a browser). GitHub runs both on every push and pull request (`.github/workflows/test.yml`).
+- Changes go live through pull requests into `main`, never by pushing to `main`. Each pull request is squash-merged by itself once Tests passes (`.github/workflows/automerge.yml`) and Cloudflare deploys it, so opening a ready pull request ships the change. The host has agreed to this for the changes they ask for. Anything they haven't asked for, or want to look at first, goes up as a draft pull request.
 - Keep `README-deploy.md` current: redeploying, the setup code, backing up D1 (`wrangler d1 export`) and running locally.
