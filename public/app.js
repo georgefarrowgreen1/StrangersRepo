@@ -53,7 +53,7 @@ const SITES=[
   {id:"asg",name:"ASG",addr:"14 All Saints Green, Norwich, NR1 3NA"},
   {id:"factory",name:"Factory",addr:"122 Ber Street, Norwich, NR1 3ES"}];
 const siteOf=id=>SITES.find(s=>s.id===id)||SITES[0];
-const OPT_TABS=[["week","End of week"],["extras","Extra checks"],["cleaning","Cleaning schedule"],["prove","Prove it"],["allergens","Allergens"],["eho","EHO inspection"],["plans","HACCP & risk"],["suppliers","Suppliers"],["contacts","Contacts"],["staff","Staff training"],["onboarding","Onboarding"],["review","4-weekly review"]];
+const OPT_TABS=[["week","End of week"],["extras","Extra checks"],["cleaning","Cleaning schedule"],["prove","Prove it"],["allergens","Allergens"],["eho","Last EHO inspection report"],["plans","HACCP & risk"],["suppliers","Suppliers"],["contacts","Contacts"],["staff","Staff training"],["onboarding","Onboarding"],["review","4-weekly review"]];
 const WEEKDAYS=[[1,"Monday"],[2,"Tuesday"],[3,"Wednesday"],[4,"Thursday"],[5,"Friday"],[6,"Saturday"],[0,"Sunday"]];
 const LISTS=[["opening","Opening"],["closing","Closing"],["weekly","End-of-week"]];
 
@@ -425,7 +425,7 @@ function renderDayInner(){
   pb.disabled=R;$("#saveProb").disabled=R;
   if(d.problems&&d.problems.by)ids.push(d.problems.by);
   $("#probBy").textContent=d.problems&&d.problems.at?`Saved ${time(d.problems.at)} by ${nameOf(d.problems.by)}`:"";
-  secCard($("#probCard"),"problems",true,badgeEl("acc","pen"),"Problems & changes",pt?pt.split("\n")[0]:bad.length?"Note what you did about the reading":"Optional · nothing noted");
+  secCard($("#probCard"),"problems",true,badgeEl("acc","pen"),"Problems & changes (Corrective actions)",pt?pt.split("\n")[0]:bad.length?"Note what you did about the reading":"Optional · nothing noted");
   // sign off
   const sc=$("#signCard");sc.replaceChildren();
   const missing=steps.slice(0,3).filter(x=>!x[1]).map(x=>x[0].toLowerCase().replace("temps","temperatures")+(x[0]==="Temps"?"":" checks"));
@@ -1683,7 +1683,7 @@ const NAV=[
   {id:"day",t:"Today",grp:"diary",ic:"today"},{id:"week",t:"This week",grp:"diary",ic:"week"},{id:"history",t:"Last 4 weeks",grp:"manage",ic:"history",sub:"Days complete, gaps and problems"},
   {id:"extras",t:"Extra checks",grp:"records",ic:"extras",tile:"teal"},{id:"cleaning",t:"Cleaning",grp:"records",ic:"cleaning",tile:"blue"},
   {id:"prove",t:"Prove it",grp:"records",ic:"prove",tile:"orange"},{id:"allergens",t:"Allergens",grp:"records",ic:"allergens",tile:"red"},
-  {id:"eho",t:"EHO inspection",grp:"manage",ic:"eho",tile:"green"},{id:"plans",t:"HACCP & risk",grp:"manage",ic:"plans",tile:"purple"},
+  {id:"eho",t:"Last EHO inspection report",grp:"manage",ic:"eho",tile:"green"},{id:"plans",t:"HACCP & risk",grp:"manage",ic:"plans",tile:"purple"},
   {id:"suppliers",t:"Suppliers",grp:"manage",ic:"suppliers",tile:"orange"},{id:"contacts",t:"Contacts",grp:"manage",ic:"contacts",tile:"green"},
   {id:"staff",t:"Staff training",grp:"manage",ic:"staff",tile:"teal"},{id:"onboarding",t:"Onboarding",grp:"manage",ic:"onboarding",tile:"indigo"},
   {id:"review",t:"4-weekly review",grp:"manage",ic:"review",tile:"red"},{id:"setup",t:"Setup",grp:"manage",ic:"setup",tile:"grey"},
@@ -1901,17 +1901,56 @@ function buildSetup(){
       const cb=el("input",{type:"checkbox",disabled:R,"aria-label":"Used at this site: "+(c.t||"new check"),title:"Used at this site"});cb.checked=!c.off;
       const tx=el("input",{type:"text",id:`ce_${k}_${i}`,value:c.t,disabled:R,placeholder:"Describe the check","aria-label":"Check"});
       const row=el("div",{class:"chk-row"+(c.off?" off":"")});
+      const grip=R?el("span"):dragHandle(row,k,i,box);
       cb.addEventListener("change",()=>{if(cb.checked)delete c.off;else c.off=true;row.classList.toggle("off",!cb.checked);sDirty()});
       tx.addEventListener("input",()=>{c.t=tx.value;sDirty()});
       const tag=el("span",{class:"tag",text:!S.shared?"":sharedHas(k,c.t)?"Shared":"This site only"});
       const del=el("button",{class:"btn ghost sm danger",disabled:R,"aria-label":"Delete check"},"✕");
       armDelete(del,"✕",()=>{s[k].splice(i,1);sDirty();buildSetup()});
-      row.append(cb,tx,tag,del);box.append(row);
+      row.append(grip,cb,tx,tag,del);box.append(row);
     });
     if(!s[k].length)box.append(el("div",{class:"by",text:"No checks."}));
   }
   for(const x of["#addUnit","#saveSetup","#discardSetup"])$(x).disabled=R;
   document.querySelectorAll("[data-addchk]").forEach(b=>b.disabled=R);
+}
+// Drag a check up or down by its handle (mouse, finger or pen), or focus the handle and use the arrow keys.
+// The new order is saved with the rest of Setup.
+function dragHandle(row,k,i,box){
+  const h=el("button",{class:"grip",type:"button","aria-label":"Move this check: drag, or use the up and down arrow keys",title:"Drag to reorder"},
+    svgi('<path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01"/>'));
+  const moveTo=(from,to)=>{
+    const list=SE[k];if(to<0||to>=list.length||to===from)return false;
+    const [it]=list.splice(from,1);list.splice(to,0,it);sDirty();return true;
+  };
+  h.addEventListener("keydown",e=>{
+    if(e.key!=="ArrowUp"&&e.key!=="ArrowDown")return;
+    e.preventDefault();const to=i+(e.key==="ArrowUp"?-1:1);
+    if(moveTo(i,to)){buildSetup();const n=$("#ce"+k[0].toUpperCase()+k.slice(1)).querySelectorAll(".grip")[to];if(n)n.focus()}
+  });
+  h.addEventListener("pointerdown",e=>{
+    if(e.button!==0)return;
+    e.preventDefault();h.setPointerCapture(e.pointerId);
+    const rows=[...box.querySelectorAll(".chk-row")],from=rows.indexOf(row);
+    const top0=row.getBoundingClientRect().top,y0=e.clientY;
+    row.classList.add("dragging");box.classList.add("sorting");
+    let to=from;
+    const mid=rows.map(r=>{const b=r.getBoundingClientRect();return b.top+b.height/2});
+    const hgt=row.getBoundingClientRect().height+6;
+    const move=ev=>{
+      const dy=ev.clientY-y0;row.style.transform=`translateY(${dy}px)`;
+      const c=top0+dy+row.getBoundingClientRect().height/2;
+      to=from;for(let j=0;j<rows.length;j++){if(j<from&&c<mid[j]){to=j;break}if(j>from&&c>mid[j])to=j}
+      rows.forEach((r,j)=>{if(r===row)return;const s=(from<to&&j>from&&j<=to)?-hgt:(to<from&&j>=to&&j<from)?hgt:0;r.style.transform=s?`translateY(${s}px)`:""});
+    };
+    const end=()=>{
+      h.removeEventListener("pointermove",move);h.removeEventListener("pointerup",end);h.removeEventListener("pointercancel",end);
+      rows.forEach(r=>r.style.transform="");row.classList.remove("dragging");box.classList.remove("sorting");
+      if(moveTo(from,to))buildSetup();
+    };
+    h.addEventListener("pointermove",move);h.addEventListener("pointerup",end);h.addEventListener("pointercancel",end);
+  });
+  return h;
 }
 function unitRow(u,i){
   const r=el("div",{class:"row"});
