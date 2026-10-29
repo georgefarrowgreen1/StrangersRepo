@@ -890,6 +890,23 @@ const rowsKey=k=>k==="haccp"?"steps":"rows";
 const clone=x=>{const c=JSON.parse(JSON.stringify(x||{}));delete c.id;return c};
 function blankRow(k){return k==="haccp"?{step:"",hazard:"",hazardType:"",control:"",ccp:false,criticalLimit:"",monitoring:"",correctiveAction:"",verification:"",records:""}
   :{hazard:"",whoHarmed:"",existingControls:"",likelihood:0,severity:0,furtherAction:"",actionBy:"",dueDate:"",done:false}}
+// The risk scoring used on risk assessments: each scale 1–5, Risk = likelihood × severity, then three colour bands.
+const RISK_L=[["Rare","Hard to imagine it happening"],["Unlikely","Could happen, but not expected"],["Possible","Could happen now and then"],["Likely","Will probably happen at some point"],["Almost certain","Expected to happen, often"]];
+const RISK_S=[["Negligible","No injury or illness"],["Minor","First aid, or a mild short illness"],["Moderate","Needs medical treatment or time off work"],["Major","Serious injury or illness, hospital"],["Severe","Fatal or life-changing"]];
+const RISK_BANDS=[["ok","Low","1–4","Acceptable: keep the existing controls in place"],["warn","Medium","5–12","Reduce the risk where you reasonably can, and review it"],["bad","High","15–25","Act now: don't carry on until the risk is reduced"]];
+const riskBand=v=>!v?null:RISK_BANDS[v<=4?0:v<=12?1:2];
+function riskKeyEl(){
+  const scale=(title,list)=>el("div",{class:"rk-scale"},el("h3",{text:title}),el("ol",{},...list.map(([n,d],i)=>el("li",{},el("span",{class:"rk-n",text:String(i+1)}),el("span",{},el("b",{text:n}),el("span",{class:"s",text:" · "+d}))))));
+  const grid=el("table",{class:"rk-grid","aria-label":"Risk scores: likelihood down, severity across"},
+    el("thead",{},el("tr",{},el("th",{class:"rk-corner",text:"L × S"}),...[1,2,3,4,5].map(s=>el("th",{scope:"col",title:RISK_S[s-1][0],text:String(s)})))),
+    el("tbody",{},...[5,4,3,2,1].map(l=>el("tr",{},el("th",{scope:"row",title:RISK_L[l-1][0],text:String(l)}),...[1,2,3,4,5].map(s=>{const v=l*s;return el("td",{class:"rate "+riskBand(v)[0],title:`${RISK_L[l-1][0]} × ${RISK_S[s-1][0]} = ${v} ${riskBand(v)[1]}`,text:String(v)})})))));
+  return el("div",{class:"riskkey"},
+    el("p",{class:"rk-formula"},el("b",{text:"Risk = likelihood × severity"}),el("span",{class:"s",text:" · score each from 1 to 5, then multiply"})),
+    el("div",{class:"rk-scales"},scale("Likelihood",RISK_L),scale("Severity",RISK_S)),
+    el("div",{class:"rk-bottom"},
+      el("div",{class:"rk-bands"},...RISK_BANDS.map(([c,l,r,a])=>el("div",{class:"rk-band"},el("span",{class:"rate "+c,text:`${r} ${l}`}),el("span",{class:"s",text:a})))),
+      el("div",{class:"rk-gridwrap"},el("div",{class:"s rk-axis",text:"Likelihood ↓  Severity →"}),grid)));
+}
 function riskOf(r){const v=(Number(r.likelihood)||0)*(Number(r.severity)||0);return{v,cls:!v?"":v<=4?"ok":v<=12?"warn":"bad",text:!v?"–":`${v} ${v<=4?"Low":v<=12?"Medium":"High"}`}}
 function reviewState(d){
   if(!d.reviewDate)return{cls:"",text:"No review date",overdue:false};
@@ -985,7 +1002,8 @@ function renderEditor(){
           td.className="ctr";const cb=el("input",{type:"checkbox","aria-label":aria,disabled:R});cb.checked=!!r[f];
           cb.addEventListener("change",()=>{r[f]=cb.checked;if(f==="ccp")tr.classList.toggle("ccp",cb.checked);markDirty()});td.append(cb);
         }else if(t==="num"){
-          const s=el("select",{"aria-label":aria,disabled:R});for(let n=0;n<=5;n++)s.append(el("option",{value:String(n)},n?String(n):"–"));s.value=String(r[f]||0);
+          const lab=f==="likelihood"?RISK_L:RISK_S;
+          const s=el("select",{"aria-label":aria,disabled:R});for(let n=0;n<=5;n++)s.append(el("option",{value:String(n)},n?`${n} ${lab[n-1][0]}`:"–"));s.value=String(r[f]||0);
           s.addEventListener("change",()=>{r[f]=Number(s.value);const q=riskOf(r);rateSpan.textContent=q.text;rateSpan.className="rate "+q.cls;markDirty()});td.append(s);
         }else if(t==="rate"){
           td.className="ctr";const q=riskOf(r);rateSpan=el("span",{class:"rate "+q.cls,text:q.text});td.append(rateSpan);
@@ -1015,7 +1033,7 @@ function renderEditor(){
   notes.addEventListener("input",()=>{d.notes=notes.value;markDirty()});
   const legend=k==="haccp"
     ?"Rows ticked as CCP are critical control points and are highlighted. Click any cell to edit it, then save."
-    :"Risk = likelihood × severity, each from 1 (lowest) to 5 (highest).";
+    :null;
   const del=el("button",{class:"btn ghost danger",hidden:R},"Delete document");
   armDelete(del,"Delete document",async()=>{if(await save(()=>D("plans",P.id).delete())){closePlan();toast("Document deleted")}});
   const hist=(d.history||[]).slice(0,10);
@@ -1026,7 +1044,7 @@ function renderEditor(){
     el("section",{class:"panel"},title,d.source?el("div",{class:"by",text:"Converted from "+d.source}):null,meta),
     el("section",{class:"panel"},
       el("div",{class:"row spread"},el("h2",{text:k==="haccp"?"Hazards and controls":"Hazards and actions"}),R?null:el("button",{class:"btn ghost sm",onclick:()=>{d[rk].push(blankRow(k));markDirty();buildRows()}},"Add row")),
-      el("p",{class:"note",text:legend}),
+      legend?el("p",{class:"note",text:legend}):riskKeyEl(),
       el("div",{class:"scroll"},table)),
     el("section",{class:"panel"},el("label",{class:"label",for:"pl_notes",text:"Notes"}),notes),
     R?null:el("section",{class:"panel"},pick.el),
@@ -1680,6 +1698,20 @@ function pdfHeader(title,lines){
 }
 // Cell styles in PDF tables, matching the pills on screen.
 const PDF_CLS={bad:{color:"#b3261e",fill:"#fde2df"},warn:{color:"#7a4b00",fill:"#fff1d6"},ok:{color:"#17733a"},muted:{color:"#777777"}};
+PDF_CLS.okfill={color:"#17733a",fill:"#dcf3e3"};PDF_CLS.warnfill={color:"#7a4b00",fill:"#ffe7b8"};PDF_CLS.badfill={color:"#b3261e",fill:"#fbd3cf"};
+// The risk key in a PDF: the formula, both numbered scales, the three bands and the 5×5 grid of scores.
+function riskKeyPdf(f){
+  f.need(310); // keep the whole key on one page
+  f.para("Risk = likelihood × severity: score each from 1 to 5, then multiply.",{size:9.5,bold:true,color:"#111111"}).gap(4);
+  pdfTable(f,[{l:"Score",w:40,align:"center"},{l:"Likelihood",flex:1},{l:"Severity",flex:1}],
+    [0,1,2,3,4].map(i=>[{t:String(i+1),b:true},`${RISK_L[i][0]}: ${RISK_L[i][1].toLowerCase()}`,`${RISK_S[i][0]}: ${RISK_S[i][1].toLowerCase()}`]),{size:8,head:8});
+  f.gap(8);
+  const fillOf=v=>riskBand(v)[0]+"fill";
+  pdfTable(f,[{l:"Risk score",w:90},{l:"Band",w:70},{l:"What to do",flex:1}],RISK_BANDS.map(([c,l,r,a])=>[{t:r,cls:c+"fill",b:true},{t:l,cls:c+"fill",b:true},a]),{size:8,head:8});
+  f.gap(8);f.need(120);
+  pdfTable(f,[{l:"Likelihood (down) × Severity (across)",w:130},...[1,2,3,4,5].map(s=>({l:`${s} ${RISK_S[s-1][0]}`,w:80,align:"center"}))],
+    [5,4,3,2,1].map(l=>[{t:`${l} ${RISK_L[l-1][0]}`,b:true},...[1,2,3,4,5].map(s=>({t:`${l*s} ${riskBand(l*s)[1]}`,cls:fillOf(l*s),b:true}))]),{size:8,head:8,zebra:null});
+}
 const pdfCell=c=>{if(c==null||typeof c!=="object")return c;const st=PDF_CLS[c.cls]||{};return{t:c.t,bold:c.b,tick:c.tick,color:st.color,fill:c.tick?"#fde2df":st.fill,...(c.tick?{color:"#b3261e"}:{})}};
 function pdfTable(f,cols,rows,opts){f.table(cols.map(c=>({label:c.l,w:c.w,flex:c.flex,align:c.align,rotate:c.rotate,bold:c.bold})),rows.map(r=>r.map(pdfCell)),opts)}
 
@@ -1859,7 +1891,7 @@ function inspectSections(R){
     rows:(insp.issues||[]).map(i=>[i.issue,i.area||"",i.action||"",pdfDate(i.deadline),i.done?{t:`Done${i.doneAt?" "+pdfDate(iso(new Date(i.doneAt))):""}${i.fixNote?": "+i.fixNote:""}`,cls:"ok"}:{t:"Open",cls:"bad"}]),empty:"No issues recorded."});
   for(const d of S.plans.slice().sort((a,b)=>(a.type||"").localeCompare(b.type||"")||(a.title||"").localeCompare(b.title||""))){
     const k=d.type,cols=PL_COLS[k];if(!cols)continue;
-    out.push({id:"plan-"+d.id,title:d.title||PL_NAME[k],plan:true,intro:PL_NAME[k],
+    out.push({id:"plan-"+d.id,title:d.title||PL_NAME[k],plan:true,intro:PL_NAME[k],riskKey:k==="risk",
       facts:PL_META[k].map(([f,l,t])=>[l,t==="date"?pdfDate(d[f]):d[f]]).concat([["Notes",d.notes]]),
       cols:cols.map(([f,l,t])=>({l,flex:t==="w-l"?1.6:t==="w-m"?1.2:t==="w-s"?0.9:0.55,align:t==="chk"||t==="num"||t==="rate"?"center":undefined})),
       rows:(d[rowsKey(k)]||[]).map(r=>cols.map(([f,,t])=>t==="chk"?(r[f]?{t:"Yes",b:true}:""):t==="rate"?(()=>{const x=riskOf(r);return{t:x.text,cls:x.cls}})():t==="date"?pdfDate(r[f]):(r[f]==null||r[f]===0?"":String(r[f])))),
@@ -1898,6 +1930,7 @@ function renderInspect(){
         sec.append(el("div",{class:"scroll"},el("table",{class:"rep"+(x.matrix?" matrix":"")},el("thead",{},head),tb)));
       }
     }
+    if(x.riskKey)sec.append(riskKeyEl());
     if(x.after)sec.append(el("p",{class:"note",text:x.after}));
     return sec;
   }));
@@ -1921,6 +1954,7 @@ function inspectPdf(){
       if(x.rows.length)pdfTable(f,x.cols,x.rows,x.matrix?{rotateHead:true,headH:96,size:8}:{size:7.8,head:7.5});
       else if(x.empty)f.para(x.empty,{size:9,color:"#555555"});
     }
+    if(x.riskKey)riskKeyPdf(f.gap(8));
     if(x.after)f.gap(6).para(x.after,{size:8,color:"#555555"});
     f.gap(14);
   });
