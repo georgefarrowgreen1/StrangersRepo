@@ -399,7 +399,7 @@ test("staff journey on the real page", async () => {
   await page.fill("#dvItems", "Milk ×20, cream");
   await page.fill("#dv_chilled", "11");
   await page.locator("#dv_chilled_st", { hasText: "too warm, reject" }).waitFor();
-  await page.locator("#dvPack button", { hasText: "Yes" }).click();
+  await page.locator("#dvPack button", { hasText: "No" }).click();
   await page.locator("#dvOrder button", { hasText: "Yes" }).click();
   await page.locator("#dvResult", { hasText: "chilled food too warm" }).waitFor();
   await page.click("#dvAccept");
@@ -412,6 +412,7 @@ test("staff journey on the real page", async () => {
   const dv = (await api("query", { path: "deliveries" })).docs[0].data;
   assert.equal(dv.outcome, "rejected");
   assert.equal(dv.chilled, 11);
+  assert.equal(dv.packaging, "ok", "No to \"Any damage to packaging?\" means no damage");
   assert.equal(dv.date, await page.evaluate(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }), "today's date added");
   assert.equal(dv.by, "web:Alex Brown");
   assert.ok(dv.supplierId, "linked to the supplier");
@@ -419,7 +420,7 @@ test("staff journey on the real page", async () => {
   await page.locator("#dvSup button", { hasText: "Other supplier" }).click();
   await page.fill("#dvOther", "Local bakery");
   await page.locator('label[for="dvNoTemp"]').click();
-  await page.locator("#dvPack button", { hasText: "Yes" }).click();
+  await page.locator("#dvPack button", { hasText: "No" }).click();
   await page.locator("#dvOrder button", { hasText: "Yes" }).click();
   await page.click("#dvAccept");
   await page.locator("#dvList .xrow", { hasText: "Local bakery" }).locator(".pill.ok", { hasText: "Accepted" }).waitFor();
