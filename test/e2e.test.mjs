@@ -287,6 +287,36 @@ test("staff journey on the real page", async () => {
   assert.match(await page.locator("#openList label").first().innerText(), /Surfaces sanitised/, "Today follows the new order");
   assert.match(await page.locator("#probCard").innerText(), /Problems & changes \(Corrective actions\)/);
 
+  // Setup → Diary starts on: at the Cafe only, then a date for all four sites. Earlier days aren't counted as
+  // missed, and a cleaning job's own last-done date is kept.
+  await switchSite(page, "Cafe");
+  const jobBefore = (await api("query", { path: "sites/cafe/cleaning" })).docs.find((d) => d.data.name === "Descale kettle");
+  await openSection(page, "setup");
+  const t0d = await page.evaluate(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; });
+  await page.fill("#siStart", t0d);
+  await page.click("#saveSetup");
+  await page.locator("#setupMsg", { hasText: "Setup saved for the Cafe." }).waitFor();
+  const cafeSet = (await api("get", { path: "sites/cafe/settings/main" })).data;
+  assert.equal(cafeSet.startDate, t0d);
+  assert.equal(cafeSet.startSet, true);
+  assert.notEqual((await api("get", { path: "settings/main" })).data.startSet, true, "other sites untouched");
+  await openSection(page, "history");
+  await page.locator("#strip .cd").first().waitFor();
+  assert.equal(await page.locator("#strip .cd.bad").count(), 0, "no missed days before the start");
+  assert.equal((await api("query", { path: "sites/cafe/cleaning" })).docs.find((d) => d.data.name === "Descale kettle").data.lastAt, jobBefore.data.lastAt, "job dates kept");
+  await openSection(page, "setup");
+  await page.fill("#siStart", "2026-09-01");
+  await page.locator('label[for="siStartAll"]').click();
+  await page.click("#saveSetup");
+  await page.locator("#setupMsg", { hasText: "Start date also set at the Roastery, ASG, Factory." }).waitFor();
+  for (const base of ["settings/main", "sites/cafe/settings/main", "sites/asg/settings/main", "sites/factory/settings/main"]) {
+    const st = (await api("get", { path: base })).data;
+    assert.equal(st.startDate, "2026-09-01", base);
+    assert.equal(st.startSet, true, base);
+  }
+  assert.ok((await api("get", { path: "settings/main" })).data.opening.length >= 2, "the Roastery's checks are kept");
+  await switchSite(page, "Roastery");
+
   // Sign out, then sign in as the new member of staff: username + temporary password, then their own.
   await accountMenu(page, "Sign out");
   await page.waitForURL(/\/signin$/);

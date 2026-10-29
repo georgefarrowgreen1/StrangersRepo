@@ -379,6 +379,11 @@
         <div class="field"><label class="label" for="siManager">Manager or person in charge</label><input type="text" id="siManager" placeholder="e.g. Sam Patel"></div>
         <div class="field wide"><label class="label" for="siNote">Site notes and guidance</label><textarea id="siNote" placeholder="Shown at the top of this site's daily diary. e.g. No hot food here: Prove it cooking checks don't apply. Deliveries come in through the back door on Ber Street."></textarea></div>
       </div>
+      <div class="fields">
+        <div class="field"><label class="label" for="siStart">Diary starts on</label><input type="date" id="siStart"></div>
+      </div>
+      <div class="toggles"><label for="siStartAll"><input type="checkbox" id="siStartAll">Use this start date at all four sites</label></div>
+      <p class="note">Days before this date aren't counted as missing, in Last 4 weeks, on Today or in EHO inspection mode. Cleaning and extra checks keep their own last-done dates.</p>
       <div class="label">Open on</div>
       <div class="toggles" id="siDays"></div>
       <p class="note">Closed days aren't counted as missing in Last 4 weeks or on Today.</p>
