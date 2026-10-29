@@ -256,6 +256,36 @@ test("staff journey on the real page", async () => {
   assert.equal((await api("query", { path: "staff" })).docs.find((d) => d.data.name === "Jo Smith").data.topics.l2.date, "2026-10-20",
     "dates already recorded are kept");
 
+  // Setup: drag the second opening check above the first, move it back down with the keyboard, drag again, save.
+  await openSection(page, "setup");
+  const openRows = page.locator("#ceOpening .chk-row");
+  const rowText = async () => openRows.locator("input[type=text]").evaluateAll((ns) => ns.map((n) => n.value));
+  assert.deepEqual(await rowText(), ["Hands washed", "Surfaces sanitised"]);
+  const dragUp = async () => {
+    await openRows.nth(0).scrollIntoViewIfNeeded();
+    const g = await openRows.nth(1).locator(".grip").boundingBox();
+    const t = await openRows.nth(0).boundingBox();
+    await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(g.x + g.width / 2, t.y + 4, { steps: 8 });
+    await page.mouse.up();
+  };
+  await dragUp();
+  assert.deepEqual(await rowText(), ["Surfaces sanitised", "Hands washed"], "drag moves a check up");
+  await openRows.nth(0).locator(".grip").focus();
+  await page.keyboard.press("ArrowDown");
+  assert.deepEqual(await rowText(), ["Hands washed", "Surfaces sanitised"], "arrow keys move a check");
+  await dragUp();
+  await page.click("#saveSetup");
+  await assert.doesNotReject(waitFor(async () => (await api("get", { path: "settings/main" })).data.opening.map((c) => c.id).join() === "o2,o1"),
+    "new order saved");
+  await openSection(page, "day");
+  await page.fill("#dayDate", await page.evaluate(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }));
+  await page.locator("#dayDate").dispatchEvent("change");
+  await page.locator("#openList label").first().waitFor();
+  assert.match(await page.locator("#openList label").first().innerText(), /Surfaces sanitised/, "Today follows the new order");
+  assert.match(await page.locator("#probCard").innerText(), /Problems & changes \(Corrective actions\)/);
+
   // Sign out, then sign in as the new member of staff: username + temporary password, then their own.
   await accountMenu(page, "Sign out");
   await page.waitForURL(/\/signin$/);
@@ -302,7 +332,7 @@ test("staff journey on the real page", async () => {
   await ctx.setOffline(true);
   await page.locator("#openList label", { hasText: "Hands washed" }).click();
   await page.locator("#conn", { hasText: "Offline · 1 change waiting" }).waitFor();
-  assert.equal(await page.locator("#openList input").first().isChecked(), true, "the tick shows while offline");
+  assert.equal(await page.locator("#openList label", { hasText: "Hands washed" }).locator("input").isChecked(), true, "the tick shows while offline");
   await ctx.setOffline(false);
   await page.locator("#conn").waitFor({ state: "hidden", timeout: 15000 });
   await page.locator("#toast", { hasText: "Back online" }).waitFor();
@@ -337,7 +367,7 @@ test("staff journey on the real page", async () => {
 async function openSection(page, tab) {
   const tabs = { day: "Today", week: "Week" };
   if (tabs[tab]) return page.locator("#tabbar .tab", { hasText: tabs[tab] }).click();
-  const name = { history: "Last 4 weeks", extras: "Extra checks", cleaning: "Cleaning", prove: "Prove it", allergens: "Allergens", eho: "EHO inspection",
+  const name = { history: "Last 4 weeks", extras: "Extra checks", cleaning: "Cleaning", prove: "Prove it", allergens: "Allergens", eho: "Last EHO inspection report",
     plans: "HACCP & risk", suppliers: "Suppliers", contacts: "Contacts", staff: "Staff training", onboarding: "Onboarding", review: "4-weekly review", setup: "Setup" }[tab];
   for (const hub of ["Records", "More"]) {
     await page.locator("#tabbar .tab", { hasText: hub }).click();
