@@ -67,7 +67,7 @@ test("page is served with the shim and noindex once signed in", async () => {
   assert.equal(r.status, 200);
   const html = await r.text();
   assert.match(html, /<meta name="robots" content="noindex,nofollow">/);
-  assert.match(html, /<script src="\/claude-shim.js"><\/script>\n<script src="\/pinpad.js"><\/script>\n<script src="\/app.js"><\/script>/);
+  assert.match(html, /<script src="\/claude-shim.js"><\/script>\n<script src="\/pinpad.js"><\/script>\n<script src="\/pdf.js"><\/script>\n<script src="\/app.js"><\/script>/);
   assert.equal(r.headers.get("x-robots-tag"), "noindex, nofollow");
   assert.equal(r.headers.get("cache-control"), "private, no-store");
   assert.match(await (await fetch(srv.base + "/robots.txt")).text(), /Disallow: \//);

@@ -2,6 +2,7 @@
 //   npm i -D playwright && npx playwright install chromium     (then: npm run test:e2e)
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import { startServer, SETUP_CODE } from "./harness.mjs";
 
@@ -200,29 +201,16 @@ test("staff journey on the real page", async () => {
   assert.equal(factoryAfter.data.lastAt, 1760000000000, "each site keeps its own done-date");
   await openSection(page, "allergens");
 
-  // Upload an allergen PDF and open it.
-  const pdf = Buffer.from("%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n");
-  await page.locator("#adList button", { hasText: "Upload" }).click();
-  await page.setInputFiles("#adFile", { name: "allergen-matrix.pdf", mimeType: "application/pdf", buffer: pdf });
-  await page.fill("#adTitle", "Allergen matrix");
-  await page.locator('label[for="ad_sites_factory"]').click();
-  await page.click("#adSave");
-  await page.locator("#adMsg", { hasText: "Uploaded to the Cafe" }).waitFor();
-  const link = page.locator("#adList").getByRole("link", { name: "Open" }).first();
-  await link.waitFor();
-  const href = await link.getAttribute("href");
-  assert.match(href, /^\/_blob\/[0-9a-f]{32}$/);
-  const blob = await page.evaluate(async (u) => { const r = await fetch(u); return { type: r.headers.get("content-type"), size: (await r.arrayBuffer()).byteLength }; }, href);
-  assert.deepEqual(blob, { type: "application/pdf", size: pdf.length });
-  // The same file is listed at the Factory; removing it at the Cafe keeps the file for the Factory.
-  const facDocs = await api("query", { path: "sites/factory/allergenDocs" });
-  assert.equal(facDocs.docs.length, 1);
-  assert.equal("/_blob/" + facDocs.docs[0].data.assetId, href);
-  const rm = page.locator("#adList .pdfcard", { hasText: "Allergen matrix" }).locator("button", { hasText: "Remove" });
-  await rm.click(); await rm.click();
-  await assert.doesNotReject(waitFor(async () => (await api("query", { path: "sites/cafe/allergenDocs" })).docs.length === 0), "removed at the Cafe");
-  await page.waitForTimeout(500);
-  assert.equal(await page.evaluate(async (u) => (await fetch(u)).status, href), 200, "file kept while the Factory still lists it");
+  // The allergen matrix is generated as a PDF from the Cafe's items; a PDF uploaded before is still listed.
+  assert.equal(await page.locator("#adFile").count(), 0, "no upload option");
+  await api("set", { path: "sites/cafe/allergenDocs/old1", data: { title: "Summer allergen sheet", fileName: "summer.pdf", assetId: "0123456789abcdef0123456789abcdef", size: 1000, by: "web:Sam Patel", at: Date.now() - 864e5 } });
+  await page.locator("#adList .pdfcard", { hasText: "Summer allergen sheet" }).waitFor();
+  const [algDl] = await Promise.all([page.waitForEvent("download"), page.locator("#adList .btn", { hasText: "Generate PDF" }).click()]);
+  assert.match(algDl.suggestedFilename(), /^Allergen matrix - Strangers Cafe - \d{4}-\d{2}-\d{2}\.pdf$/);
+  const algPdf = await fs.readFile(await algDl.path());
+  assert.equal(algPdf.subarray(0, 8).toString("latin1"), "%PDF-1.4");
+  assert.ok(algPdf.toString("latin1").includes(Buffer.from("Almond croissant", "latin1").toString("hex")), "matrix lists the items");
+  assert.ok(algPdf.toString("latin1").includes(Buffer.from("Tree nuts", "latin1").toString("hex")), "with the 14 allergens");
 
   // Records show names: switch to the Roastery, whose seeded day was ticked by "Seeder".
   await switchSite(page, "Roastery");
@@ -363,8 +351,33 @@ test("staff journey on the real page", async () => {
   assert.equal(cm.fixNote, "Cleared the filter");
   assert.equal(cm.doneBy, "web:Alex Brown");
   await page.locator("#mScope button", { hasText: "This site" }).click();
+
+  // EHO inspection mode (open to staff): a period, the records in one view, and a PDF.
   await page.locator("#tabbar .tab", { hasText: "More" }).click();
-  assert.deepEqual(await page.locator("#moreHub .lrow b").allTextContents(), ["Last 4 weeks", "Switch person", "Set a quick PIN", "Change password", "Sign out"]);
+  await page.locator("#moreHub .lrow", { hasText: "EHO inspection mode" }).click();
+  await page.locator("#inChips button", { hasText: "Last 3 months" }).click();
+  await page.locator("#in-daily table").waitFor();
+  const todayLong = await page.evaluate(() => new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }));
+  assert.match(await page.locator("#in-daily").innerText(), new RegExp(todayLong));
+  assert.match(await page.locator("#in-actions").innerText(), /Northern Dairy: chilled 11°C/, "rejected delivery listed as a corrective action");
+  assert.match(await page.locator("#in-deliveries").innerText(), /Rejected/);
+  assert.match(await page.locator("#in-maintenance").innerText(), /Grinder burrs/);
+  assert.match(await page.locator("#in-summary").innerText(), /days fully recorded/);
+  await page.locator("#inJump .fchip", { hasText: "Temperature log" }).click();
+  await page.locator("#inChips button", { hasText: "Choose dates" }).click();
+  await page.fill("#inFrom", "2026-10-01"); await page.locator("#inFrom").dispatchEvent("change");
+  await page.fill("#inTo", "2026-10-01"); await page.locator("#inTo").dispatchEvent("change");
+  await page.locator("#inSub", { hasText: "1 Oct 2026 to 1 Oct 2026" }).waitFor();
+  await page.locator("#in-daily table").waitFor();
+  assert.match(await page.locator("#in-daily").innerText(), /1 Oct 2026/);
+  const [inDl] = await Promise.all([page.waitForEvent("download"), page.click("#inPdf")]);
+  assert.match(inDl.suggestedFilename(), /^EHO inspection records - Strangers Roastery - 2026-10-01 to 2026-10-01\.pdf$/);
+  const inPdf = (await fs.readFile(await inDl.path())).toString("latin1");
+  assert.ok(inPdf.startsWith("%PDF-1.4"));
+  for (const t of ["Food safety records", "Daily diary", "Corrective actions", "Staff training", "Allergen matrix"])
+    assert.ok(inPdf.includes(Buffer.from(t, "latin1").toString("hex")), "PDF has " + t);
+  await page.locator("#tabbar .tab", { hasText: "More" }).click();
+  assert.deepEqual(await page.locator("#moreHub .lrow b").allTextContents(), ["Last 4 weeks", "EHO inspection mode", "Switch person", "Set a quick PIN", "Change password", "Sign out"]);
   const refused = await fetch(`${srv.base}/api/db/set`, { method: "POST", headers: { "content-type": "application/json", cookie: (await ctx.cookies()).map((c) => `${c.name}=${c.value}`).join("; ") },
     body: JSON.stringify({ path: "suppliers/x", data: { name: "X" } }) });
   assert.equal((await refused.json()).code, "permission_denied");

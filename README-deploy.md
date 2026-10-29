@@ -10,6 +10,7 @@ The site is one Cloudflare Worker serving the diary's pages and the API they tal
 | `public/signin.html`, `public/signin.js` | Sign-in, choosing a new password, changing a password, first-admin setup and admin password recovery. |
 | `public/admin.html`, `public/admin.js` | The Admin page: people and roles. |
 | `public/icon-*.png`, `public/manifest.webmanifest` | Home Screen icon and app settings. |
+| `public/pdf.js` | Makes PDFs on the device (allergen matrix, EHO inspection records): Helvetica text, tables and the logo, no libraries. |
 | `public/pinpad.js` | The 4-digit PIN pad for quick switching, used by the diary and the sign-in page. |
 | `src/` | The Worker: `index.ts` (routing, security headers and the nightly job), `access.ts` (who can reach what: access control, roles and write rate limiting, in one place), `auth.ts` (sign-in, sessions and quick switching), `admin.ts` (admin API), `backup.ts` (nightly backups), `docs.ts` (the db API), `assets.ts` (PDFs), `paths.ts` (allowed document paths), `schema.ts` (database tables, created automatically). |
 | `.github/workflows/test.yml` | Runs every test on GitHub for each push and pull request. |
