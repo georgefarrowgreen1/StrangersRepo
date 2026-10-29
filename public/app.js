@@ -502,6 +502,11 @@ function renderWeek(){
 }
 
 /* ---------- history ---------- */
+// The first day the diary counts at this site (Setup → Diary starts on). Earlier days are never shown as missed.
+const diaryStart=(s)=>(s||S.settings).startDate||"";
+// Only a start date someone chose in Setup (startSet) hides the days before it altogether; one filled in
+// automatically when Setup was first saved only stops empty earlier days counting as missed.
+const hardStart=(s)=>{s=s||S.settings;return s.startSet?s.startDate||"":""};
 function renderHistory(){
   const grid=$("#strip");grid.replaceChildren();
   const end=today(),first=addDays(end,-27),start=monday(first);
@@ -510,6 +515,7 @@ function renderHistory(){
   for(let date=start;date<=addDays(monday(end),6);date=addDays(date,1)){
     const dd=parse(date);
     if(date<first||date>end){grid.append(el("span",{class:"cd out",text:String(dd.getDate())}));continue}
+    if(diaryStart()&&date<diaryStart()&&(hardStart()||!S.days[date])){grid.append(el("span",{class:"cd out",title:"Before the diary started",text:String(dd.getDate())}));continue}
     const d=S.days[date],st=dayStatus(d),shut=isClosed(date)&&!st.any;
     if(!shut){trading++;if(st.complete)complete++;else if(date<end&&!st.any)missed++}
     const cls=shut?"closed":st.complete||(d&&d.signed)?"ok":st.any?"part":date<end?"bad":"";
@@ -1783,7 +1789,7 @@ function inspectSections(R){
   const dayRows=[],tempRows=[],actions=[];
   for(const date of dates){
     const d=R.days[date],st=dayStatus(d,cfg),closed=isClosed(date,s)&&!(st.any),before=date<start;
-    if(before&&!d)continue;
+    if(before&&(hardStart(s)||!d))continue;
     if(closed){dayRows.push([pdfDate(date),{t:"Closed",cls:"muted"},"","","",""]);continue}
     open++;
     if(!d||!st.any){
@@ -1802,7 +1808,7 @@ function inspectSections(R){
       did:d.problems&&d.problems.text?d.problems.text:{t:"No action noted",cls:"bad"},by:d.problems?fullName(d.problems.by):""});
     if(d.problems&&d.problems.text&&!temps.some(x=>x.c==="bad"))actions.push({date,area:"Daily diary",what:"Problem or change noted",did:d.problems.text,by:fullName(d.problems.by)});
   }
-  for(const w of R.weeks)if(w.notes&&w.notes.text)actions.push({date:w.week,area:"Week",what:"Weekly note",did:w.notes.text,by:fullName(w.notes.by)});
+  for(const w of R.weeks)if(w.notes&&w.notes.text&&addDays(w.week,6)>=(hardStart(s)||""))actions.push({date:w.week,area:"Week",what:"Weekly note",did:w.notes.text,by:fullName(w.notes.by)});
   for(const r of R.prove.filter(r=>r.pass===false))actions.push({date:r.date,area:"Prove it",what:`${(PROVE[r.method]||{label:r.method}).label}: ${r.food}${r.reading!=null?" "+r.reading+(r.unit==="min"?" min":"°C"):""} failed`,did:r.action||{t:"No action noted",cls:"bad"},by:fullName(r.by)});
   for(const r of R.deliveries){const p=[r.chilled!=null&&r.chilled>8?`chilled ${r.chilled}°C`:"",r.frozen!=null&&r.frozen>-15?`frozen ${r.frozen}°C`:"",r.packaging==="no"?"packaging damaged":"",r.order==="no"?"not what was ordered":""].filter(Boolean);
     if(r.outcome==="rejected"||p.length)actions.push({date:r.date,area:"Delivery",what:`${r.supplier}: ${p.join(", ")||"rejected"}`,did:`${r.outcome==="rejected"?"Rejected":"Accepted"}${r.note?": "+r.note:""}`,by:fullName(r.by)})}
@@ -1852,7 +1858,7 @@ function inspectSections(R){
     rows:actions.map(a=>[pdfDate(a.date),a.area,a.what,a.did,a.by]),empty:"No problems recorded in this period."});
   if(cfg.weekly.length)out.push({id:"weekly",title:"End-of-week checks",
     cols:[{l:"Week starting",w:90},{l:"Checks done",w:90},{l:"Signed off by",w:110},{l:"Notes",flex:1}],
-    rows:R.weeks.slice().sort((a,b)=>b.week.localeCompare(a.week)).map(w=>{const n=cfg.weekly.filter(c=>w.items&&w.items[c.id]).length;
+    rows:R.weeks.filter(w=>addDays(w.week,6)>=(hardStart(s)||"")).sort((a,b)=>b.week.localeCompare(a.week)).map(w=>{const n=cfg.weekly.filter(c=>w.items&&w.items[c.id]).length;
       return[pdfDate(w.week),{t:`${n}/${cfg.weekly.length}`,cls:n>=cfg.weekly.length?"ok":n?"warn":"bad"},w.signed?{t:w.signed.name||fullName(w.signed.by),cls:"ok"}:{t:"Not signed",cls:"bad"},w.notes&&w.notes.text||""]}),empty:"No weeks recorded in this period."});
   const tcols=[{l:"Task",flex:1.2,bold:true},{l:"Method",flex:1.6},{l:"How often",w:70},{l:"Who",w:80},{l:"Last done",w:110},{l:"Done in period",w:60,align:"center"},{l:"Status",w:95}];
   out.push({id:"cleaning",title:"Cleaning schedule",cols:tcols,rows:taskRows("cleaning"),empty:"No cleaning jobs listed."});
@@ -2296,7 +2302,7 @@ document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("#sheetVeil").hi
 /* ---------- setup (per site) & publishing ---------- */
 let SE=null,setupDirty=false;
 const normT=t=>String(t||"").trim().toLowerCase().replace(/\s+/g," ");
-function setupDraft(){const s=S.settings;return JSON.parse(JSON.stringify({info:s.info||{},closedDays:s.closedDays,hide:s.hide,proveOff:s.proveOff,units:s.units,opening:s.opening,closing:s.closing,weekly:s.weekly}))}
+function setupDraft(){const s=S.settings;return JSON.parse(JSON.stringify({startDate:s.startDate||"",startAll:false,info:s.info||{},closedDays:s.closedDays,hide:s.hide,proveOff:s.proveOff,units:s.units,opening:s.opening,closing:s.closing,weekly:s.weekly}))}
 function sDirty(){if(!setupDirty){setupDirty=true;$("#setupBar").classList.remove("idle");$("#setupMsg").textContent="Unsaved changes for the "+curSite().name;renderPublish()}}
 function sharedHas(k,t){return !!S.shared&&(S.shared[k]||[]).some(c=>normT(c.t)===normT(t))}
 function renderSetup(){
@@ -2319,6 +2325,8 @@ function buildSetup(){
   fr.textContent=`The ${site.name} hasn't been set up yet, so it's using the standard checks. Change them below and save, or publish another site's checks to it.`;
   const bind=(sel,key,def)=>{const n=$(sel);n.value=s.info[key]!=null?s.info[key]:(def||"");n.disabled=R;n.oninput=()=>{s.info[key]=n.value;sDirty()}};
   bind("#siAddr","address",site.addr);bind("#siManager","manager");bind("#siNote","note");
+  const st=$("#siStart");st.value=s.startDate||"";st.disabled=R;st.oninput=()=>{s.startDate=st.value;s.startTouched=true;sDirty()};
+  const sa=$("#siStartAll");sa.checked=!!s.startAll;sa.disabled=R;sa.onchange=()=>{s.startAll=sa.checked;sDirty()};
   toggleBox($("#siDays"),WEEKDAYS,k=>!s.closedDays.includes(k),(k,on)=>{s.closedDays=s.closedDays.filter(x=>x!==k);if(!on)s.closedDays.push(k)});
   toggleBox($("#siTabs"),OPT_TABS,k=>!s.hide[k],(k,on)=>{if(on)delete s.hide[k];else s.hide[k]=true});
   toggleBox($("#siProve"),Object.entries(PROVE).map(([k,r])=>[k,r.label]),k=>!s.proveOff.includes(k),(k,on)=>{s.proveOff=s.proveOff.filter(x=>x!==k);if(!on)s.proveOff.push(k)});
@@ -2399,9 +2407,27 @@ async function saveSetup(){
   const next={...storable(S.settings),info:{...s.info},closedDays:[...s.closedDays],hide:{...s.hide},proveOff:[...s.proveOff],
     units:s.units.map(u=>({id:u.id,name:String(u.name||"").trim()||"Unnamed unit",kind:u.kind})),
     opening:cleanList(s.opening),closing:cleanList(s.closing),weekly:cleanList(s.weekly),updatedBy:S.me,updatedAt:Date.now()};
+  if(s.startDate)next.startDate=s.startDate;
+  if(s.startTouched||s.startAll)next.startSet=true;
   if(!next.startDate)next.startDate=today();
   if(next.closedDays.length===7){$("#setupMsg").textContent="Leave at least one day open.";return}
-  if(await save(()=>D("settings","main",site).set(next))){setupDirty=false;SE=null;$("#setupMsg").textContent=`Setup saved for the ${siteOf(site).name}.`;renderSetup()}
+  if(!await save(()=>D("settings","main",site).set(next)))return;
+  // "Use this start date at all four sites": only the start date changes at the other sites.
+  let also="";
+  if(s.startAll){
+    const done=[],fails=[];
+    for(const x of SITES.filter(x=>x.id!==site)){
+      const patch={startDate:next.startDate,startSet:true,updatedBy:S.me,updatedAt:Date.now()};
+      try{await D("settings","main",x.id).update(patch)}
+      catch(e){
+        if(e&&e.code==="not_found"){try{await D("settings","main",x.id).set({...storable(normSettings(null)),...patch});done.push(x.name);continue}catch(e2){}}
+        fails.push(x.name);continue;
+      }
+      done.push(x.name);
+    }
+    also=` Start date also set at the ${done.join(", ")}.${fails.length?` Couldn't update the ${fails.join(", ")}; try again.`:""}`;
+  }
+  setupDirty=false;SE=null;$("#setupMsg").textContent=`Setup saved for the ${siteOf(site).name}.${also}`;renderSetup();
 }
 $("#saveSetup").addEventListener("click",saveSetup);
 $("#discardSetup").addEventListener("click",()=>{setupDirty=false;SE=null;$("#setupMsg").textContent="Changes discarded.";renderSetup()});

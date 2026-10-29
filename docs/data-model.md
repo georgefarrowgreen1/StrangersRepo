@@ -54,9 +54,11 @@ units:[{id,name,kind:"fridge"|"freezer"}]
 opening|closing|weekly:[{id,t,off?:true}]     // checks; off = turned off at this site
 closedDays:[0..6]   // 0 = Sunday
 hide:{<tab>:true}   // sections not used at this site
-proveOff:[<method>]  trainingOff:[<topic>]  info:{address,manager,note}  startDate
+proveOff:[<method>]  trainingOff:[<topic>]  info:{address,manager,note}  startDate  startSet?
 updatedBy, updatedAt, publishedAt?, publishedFrom?
 ```
+`startDate` (YYYY-MM-DD) is the first day the diary counts at the site. It is filled in with the date Setup is first saved; then empty earlier days are never counted as missed. `startSet: true` means someone chose it in Setup → Diary starts on (optionally for all four sites): every day before it is left out of Last 4 weeks and EHO inspection mode, though the records stay in the database and can still be opened by date. Cleaning and extra checks have their own `lastAt` dates and are not affected.
+
 
 **`days/<YYYY-MM-DD>`**: one diary page.
 ```

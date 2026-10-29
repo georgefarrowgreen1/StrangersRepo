@@ -484,3 +484,6 @@ table.rk-grid th,table.rk-grid td{border:0;padding:0;width:34px;height:28px;text
 table.rk-grid th{color:var(--muted);font-family:var(--mono);font-size:12px;letter-spacing:0;text-transform:none}
 table.rk-grid td.rate{display:table-cell;border-radius:8px;padding:0}
 table.rk-grid .rk-corner{font-size:10px;width:40px}
+
+/* Setup: diary start date */
+#siStart{max-width:260px}
