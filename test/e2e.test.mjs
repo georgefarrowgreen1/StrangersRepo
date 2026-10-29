@@ -224,6 +224,18 @@ test("staff journey on the real page", async () => {
   await openSection(page, "plans");
   assert.equal(await page.locator("#pageTitle").innerText(), "HACCP & risk");
   assert.doesNotMatch(await page.locator('[data-panel="plans"]').innerText(), /Claude/);
+  // A risk assessment shows the numbered, colour-coded scoring key, and the scales label the score menus.
+  await api("set", { path: "plans/risk1", data: { type: "risk", title: "Risk assessment: Roaster", area: "Roaster", date: "2026-10-01", reviewDate: "2027-10-01",
+    rows: [{ hazard: "Hot surfaces", whoHarmed: "Staff", existingControls: "Guards", likelihood: 3, severity: 5, furtherAction: "", actionBy: "", dueDate: "", done: false }], notes: "", history: [], updatedAt: 1 } });
+  await page.locator("#plList .lrow", { hasText: "Risk assessment: Roaster" }).click();
+  const key = page.locator("#planEditView .riskkey");
+  await key.waitFor();
+  const keyText = await key.innerText();
+  for (const t of ["Risk = likelihood × severity", "Almost certain", "Severe", "1–4 Low", "5–12 Medium", "15–25 High"]) assert.ok(keyText.includes(t), "key shows " + t);
+  assert.equal(await key.locator("table.rk-grid td.rate.bad").count(), 6, "15, 16, 20 (twice) and 25 are high");
+  assert.equal(await page.locator("#planEditView select").first().locator("option:checked").innerText(), "3 Possible");
+  assert.match(await page.locator("#planEditView .doc-table .rate.bad").first().innerText(), /15 High/);
+  await page.locator("#plBack").click();
 
   // Staff training: one date applied to every topic, then a topic the Roastery doesn't need switched off.
   await openSection(page, "staff");

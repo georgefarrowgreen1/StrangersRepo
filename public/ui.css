@@ -463,3 +463,24 @@ table.rep td.is-muted{color:var(--muted)}
 table.rep.matrix td.c{color:var(--bad)}
 .injump{position:sticky;top:calc(env(safe-area-inset-top,0px) + 62px);z-index:5;padding-block:8px;background:linear-gradient(var(--bg) 70%,transparent)}
 @media (min-width:1024px){.injump{top:0}}
+
+/* Risk assessments: the scoring key */
+.riskkey{display:grid;gap:12px;padding:12px 14px;border-radius:16px;background:var(--sunk)}
+.riskkey .s{color:var(--muted);font-size:13px}
+.rk-formula{margin:0;font-size:15px}
+.rk-scales{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:12px 20px}
+.rk-scale h3{margin:0 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.rk-scale ol{list-style:none;margin:0;padding:0;display:grid;gap:5px;font-size:14px}
+.rk-scale li{display:flex;gap:8px;align-items:baseline}
+.rk-n{flex:none;display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--glass-thick);font-weight:700;font-size:12px;font-family:var(--mono)}
+.rk-bottom{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:12px 20px;align-items:start}
+.rk-bands{display:grid;gap:6px}
+.rk-band{display:flex;gap:10px;align-items:baseline}
+.rk-band .rate{flex:none;min-width:88px;text-align:center}
+.rk-gridwrap{display:grid;gap:4px;justify-items:start}
+.rk-axis{font-size:12px}
+table.rk-grid{width:auto;border-collapse:separate;border-spacing:3px;font-size:12px}
+table.rk-grid th,table.rk-grid td{border:0;padding:0;width:34px;height:28px;text-align:center;vertical-align:middle}
+table.rk-grid th{color:var(--muted);font-family:var(--mono);font-size:12px;letter-spacing:0;text-transform:none}
+table.rk-grid td.rate{display:table-cell;border-radius:8px;padding:0}
+table.rk-grid .rk-corner{font-size:10px;width:40px}
