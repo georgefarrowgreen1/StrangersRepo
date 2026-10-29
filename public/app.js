@@ -114,15 +114,19 @@ function tempState(kind,v){
   if(kind==="freezer")return v<=-18?"ok":v<=-15?"warn":"bad";
   return v<=5?"ok":v<=8?"warn":"bad";
 }
-function dayStatus(d,cfg){
-  const s=cfg||S.cfg;d=d||{};
+// A check counts from the day it was added (its "from" date, set when it's saved in Setup or published to a site),
+// so adding one never makes earlier days incomplete. Checks without a date have always applied.
+const checksOn=(list,date)=>!date?list:list.filter(c=>!c.from||c.from<=date);
+function dayStatus(d,cfg,date){
+  const s0=cfg||S.cfg;d=d||{};date=date||d.date||"";
+  const s={...s0,opening:checksOn(s0.opening,date),closing:checksOn(s0.closing,date)};
   const oi=(d.opening&&d.opening.items)||{},ci=(d.closing&&d.closing.items)||{},tp=d.temps||{};
   const oN=s.opening.filter(c=>oi[c.id]).length,cN=s.closing.filter(c=>ci[c.id]).length;
   let tN=0,issue=false;const tTot=s.units.length;
   for(const u of s.units){const r=tp[u.id]&&tp[u.id].am;if(r&&r.v!=null){tN++;if(tempState(u.kind,r.v)==="bad")issue=true}}
   const part=(n,t)=>t===0?"y":n===0?"":n>=t?"y":"p";
   return{open:part(oN,s.opening.length),temps:issue?"x":part(tN,tTot),close:part(cN,s.closing.length),signed:d.signed?"y":"",issue,
-    complete:oN>=s.opening.length&&cN>=s.closing.length&&tN>=tTot&&!!d.signed,any:oN+cN+tN>0||!!d.signed,oN,cN,tN,tTot};
+    complete:oN>=s.opening.length&&cN>=s.closing.length&&tN>=tTot&&!!d.signed,any:oN+cN+tN>0||!!d.signed,oN,cN,tN,tTot,oT:s.opening.length,cT:s.closing.length};
 }
 function taskState(t){
   const days=FREQ[t.freq];
@@ -353,7 +357,7 @@ function renderDay(){
 }
 const stepsOf=(st,temps)=>[["Temps",temps?st.temps==="y":true],["Opening",st.open==="y"],["Closing",st.close==="y"],["Sign off",!!st.signed]];
 function renderDayInner(){
-  const d=S.days[S.date]||{},s=S.cfg,st=dayStatus(d),R=ro(),isToday=S.date===today();
+  const d=S.days[S.date]||{},s=S.cfg,st=dayStatus(d,s,S.date),R=ro(),isToday=S.date===today();
   $("#dayDate").value=S.date;$("#dayDate").max=today();$("#dayNext").disabled=S.date>=today();
   $("#todayBtn").hidden=isToday;
   const ids=[];
@@ -411,7 +415,7 @@ function renderDayInner(){
     bad.length?"Out of range: needs action":tDone?`All in range${last?` · ${time(last.at)}, ${nameOf(last.by)}`:""}`:st.tN?`${st.tN} of ${st.tTot} taken`:"Fridges 5°C or below · freezers −18°C or colder");
   const tch=$("#tempChips");tch.replaceChildren(...chips);tch.hidden=!tc.classList.contains("shut")||!chips.length;
   // opening and closing
-  for(const[key,list,card,box,foot,title]of[["opening",s.opening,"#openCard","#openList","#openFoot","Opening checks"],["closing",s.closing,"#closeCard","#closeList","#closeFoot","Closing checks"]]){
+  for(const[key,list,card,box,foot,title]of[["opening",checksOn(s.opening,S.date),"#openCard","#openList","#openFoot","Opening checks"],["closing",checksOn(s.closing,S.date),"#closeCard","#closeList","#closeFoot","Closing checks"]]){
     const part=d[key]||{};const items=part.items||{};
     checklist($(box),list,items,key,(cid,v)=>patchDay(S.date,{[key]:{items:{[cid]:v},...stamp(),...(v?{}:{allDone:null})}}));roundChecks($(box));
     if(part.by)ids.push(part.by);if(part.allDone&&part.allDone.by)ids.push(part.allDone.by);
@@ -464,12 +468,12 @@ function alertEl(title,sub,action,cls){
 
 /* ---------- week ---------- */
 function renderWeek(){
-  const wk=S.week,w=S.weeks[wk]||{},list=S.cfg.weekly||[],items=w.items||{},R=ro();
+  const wk=S.week,w=S.weeks[wk]||{},list=checksOn(S.cfg.weekly||[],addDays(wk,6)),items=w.items||{},R=ro();
   $("#wkNext").disabled=wk>=monday(today());
   // the seven days, each with how complete it was
   const strip=$("#weekDays");strip.replaceChildren();
   for(let i=0;i<7;i++){
-    const date=addDays(wk,i),dd=S.days[date],st=dayStatus(dd),t=today();
+    const date=addDays(wk,i),dd=S.days[date],st=dayStatus(dd,null,date),t=today();
     const cls=date===t?"today":date>t?"future":dd&&dd.signed&&st.complete?"ok":st.any?"part":isClosed(date)?"closed":"bad";
     const lbl=parse(date).toLocaleDateString("en-GB",{weekday:"short"});
     strip.append(el("button",{class:"wday "+cls,type:"button",disabled:date>t,"aria-label":`${nice(date)}: ${cls==="ok"?"signed off":cls==="part"?"partly done":cls==="bad"?"nothing recorded":cls==="closed"?"closed":""}`,onclick:()=>goDay(date)},
@@ -516,7 +520,7 @@ function renderHistory(){
     const dd=parse(date);
     if(date<first||date>end){grid.append(el("span",{class:"cd out",text:String(dd.getDate())}));continue}
     if(diaryStart()&&date<diaryStart()&&(hardStart()||!S.days[date])){grid.append(el("span",{class:"cd out",title:"Before the diary started",text:String(dd.getDate())}));continue}
-    const d=S.days[date],st=dayStatus(d),shut=isClosed(date)&&!st.any;
+    const d=S.days[date],st=dayStatus(d,null,date),shut=isClosed(date)&&!st.any;
     if(!shut){trading++;if(st.complete)complete++;else if(date<end&&!st.any)missed++}
     const cls=shut?"closed":st.complete||(d&&d.signed)?"ok":st.any?"part":date<end?"bad":"";
     grid.append(el("button",{class:"cd "+cls+(date===end?" today":"")+(st.issue?" hot":""),type:"button",title:nice(date),"aria-label":nice(date),onclick:()=>goDay(date)},String(dd.getDate())));
@@ -1788,7 +1792,7 @@ function inspectSections(R){
   let open=0,complete=0,partial=0,missing=0,readings=0,outOfRange=0;
   const dayRows=[],tempRows=[],actions=[];
   for(const date of dates){
-    const d=R.days[date],st=dayStatus(d,cfg),closed=isClosed(date,s)&&!(st.any),before=date<start;
+    const d=R.days[date],st=dayStatus(d,cfg,date),closed=isClosed(date,s)&&!(st.any),before=date<start;
     if(before&&(hardStart(s)||!d))continue;
     if(closed){dayRows.push([pdfDate(date),{t:"Closed",cls:"muted"},"","","",""]);continue}
     open++;
@@ -1798,9 +1802,9 @@ function inspectSections(R){
     if(st.complete)complete++;else partial++;
     const part=(n,t,by)=>({t:`${n}/${t}${by&&n?" · "+fullName(by):""}`,cls:n>=t?"ok":n?"warn":"bad"});
     const temps=units.map(u=>{const v=tval(d,u);if(v==null)return null;readings++;const c=tempState(u.kind,v);if(c==="bad")outOfRange++;return{u,v,c}}).filter(Boolean);
-    dayRows.push([pdfDate(date),part(st.oN,cfg.opening.length,d.opening&&d.opening.by),
+    dayRows.push([pdfDate(date),part(st.oN,st.oT,d.opening&&d.opening.by),
       {t:temps.length?temps.map(x=>`${x.u.name} ${x.v}°C`).join(", "):"None",cls:temps.some(x=>x.c==="bad")?"bad":temps.length<units.length?"warn":"ok"},
-      part(st.cN,cfg.closing.length,d.closing&&d.closing.by),
+      part(st.cN,st.cT,d.closing&&d.closing.by),
       d.signed?{t:d.signed.name||fullName(d.signed.by),cls:"ok"}:{t:"Not signed",cls:"bad"},
       d.problems&&d.problems.text?d.problems.text:""]);
     if(units.length)tempRows.push([pdfDate(date),...units.map(u=>{const v=tval(d,u);return v==null?{t:"–",cls:"muted"}:{t:v+"°C",cls:tempState(u.kind,v)==="bad"?"bad":tempState(u.kind,v)==="warn"?"warn":""}})]);
@@ -1858,8 +1862,8 @@ function inspectSections(R){
     rows:actions.map(a=>[pdfDate(a.date),a.area,a.what,a.did,a.by]),empty:"No problems recorded in this period."});
   if(cfg.weekly.length)out.push({id:"weekly",title:"End-of-week checks",
     cols:[{l:"Week starting",w:90},{l:"Checks done",w:90},{l:"Signed off by",w:110},{l:"Notes",flex:1}],
-    rows:R.weeks.filter(w=>addDays(w.week,6)>=(hardStart(s)||"")).sort((a,b)=>b.week.localeCompare(a.week)).map(w=>{const n=cfg.weekly.filter(c=>w.items&&w.items[c.id]).length;
-      return[pdfDate(w.week),{t:`${n}/${cfg.weekly.length}`,cls:n>=cfg.weekly.length?"ok":n?"warn":"bad"},w.signed?{t:w.signed.name||fullName(w.signed.by),cls:"ok"}:{t:"Not signed",cls:"bad"},w.notes&&w.notes.text||""]}),empty:"No weeks recorded in this period."});
+    rows:R.weeks.filter(w=>addDays(w.week,6)>=(hardStart(s)||"")).sort((a,b)=>b.week.localeCompare(a.week)).map(w=>{const wl=checksOn(cfg.weekly,addDays(w.week,6)),n=wl.filter(c=>w.items&&w.items[c.id]).length;
+      return[pdfDate(w.week),{t:`${n}/${wl.length}`,cls:n>=wl.length?"ok":n?"warn":"bad"},w.signed?{t:w.signed.name||fullName(w.signed.by),cls:"ok"}:{t:"Not signed",cls:"bad"},w.notes&&w.notes.text||""]}),empty:"No weeks recorded in this period."});
   const tcols=[{l:"Task",flex:1.2,bold:true},{l:"Method",flex:1.6},{l:"How often",w:70},{l:"Who",w:80},{l:"Last done",w:110},{l:"Done in period",w:60,align:"center"},{l:"Status",w:95}];
   out.push({id:"cleaning",title:"Cleaning schedule",cols:tcols,rows:taskRows("cleaning"),empty:"No cleaning jobs listed."});
   if(S.extras.length)out.push({id:"extras",title:"Extra checks",cols:tcols,rows:taskRows("extras"),empty:""});
@@ -1979,7 +1983,7 @@ function renderReview(){
   p.textContent=left<0?`Overdue since ${nice(due)}`:left===0?"Due today":`Next due ${nice(due)} (${left} days)`;
   p.className="pill "+(left<0?"bad":left<=3?"warn":"ok");
   let comp=0,days=0,temps=0;
-  for(let dt=start;dt<=t;dt=addDays(dt,1)){const st=dayStatus(S.days[dt]);if(isClosed(dt)&&!st.any)continue;days++;if(st.complete)comp++;if(st.issue)temps++}
+  for(let dt=start;dt<=t;dt=addDays(dt,1)){const st=dayStatus(S.days[dt],null,dt);if(isClosed(dt)&&!st.any)continue;days++;if(st.complete)comp++;if(st.issue)temps++}
   const xOver=S.extras.filter(x=>taskState(x).overdue).length,kOver=S.cleaning.filter(x=>taskState(x).overdue).length;
   const pFail=S.prove.filter(r=>r.date>=start&&r.pass===false).length;
   const untrained=S.staff.filter(p=>siteTopics().some(([k])=>!(p.topics&&p.topics[k]))).length;
@@ -2055,21 +2059,21 @@ function renderAllergenDocs(){
 
 /* ---------- needs attention (per site) ---------- */
 function prevTradingDay(s,days){
-  for(let i=1;i<=7;i++){const d=addDays(today(),-i);if(!isClosed(d,s)||(days[d]&&dayStatus(days[d],activeCfg(s)).any))return d}
+  for(let i=1;i<=7;i++){const d=addDays(today(),-i);if(!isClosed(d,s)||(days[d]&&dayStatus(days[d],activeCfg(s),d).any))return d}
   return null;
 }
 function siteAttention(id){
   const sm=S.sum[id];if(!sm||!sm.ready)return null;
   const s=sm.settings,cfg=activeCfg(s),t=today();
-  const st=dayStatus(sm.days[t],cfg),closedToday=isClosed(t,s)&&!st.any;
-  const prev=prevTradingDay(s,sm.days),pd=prev?sm.days[prev]:null,pst=prev?dayStatus(pd,cfg):null;
+  const st=dayStatus(sm.days[t],cfg,t),closedToday=isClosed(t,s)&&!st.any;
+  const prev=prevTradingDay(s,sm.days),pd=prev?sm.days[prev]:null,pst=prev?dayStatus(pd,cfg,prev):null;
   const tasks=[];
   for(const kind of["cleaning","extras"]){
     if(!tabOn(kind,s))continue;
     for(const x of sm[kind]){const ts=taskState(x);if(ts.overdue)tasks.push({kind,t:x,ts})}
   }
   tasks.sort((a,b)=>(a.t.lastAt||0)-(b.t.lastAt||0));
-  let openDue=!closedToday&&cfg.opening.length>0&&st.open!=="y";
+  let openDue=!closedToday&&st.oT>0&&st.open!=="y";
   const dayKeys=Object.keys(sm.days).sort();
   const start=s.startDate||dayKeys[0]||null;
   const unused=s.fresh&&!dayKeys.length;
@@ -2168,7 +2172,7 @@ function hubSub(id){
     }
     case "prove":{const r=[...S.prove].sort((a,b)=>(b.at||0)-(a.at||0))[0];return r?`Last: ${r.food}, ${r.pass?"pass":"fail"} · ${short(r.date)}`:"No checks recorded yet"}
     case "allergens":return S.allergens.length?`${n(S.allergens.length,"menu item")} · allergen matrix PDF`:"No menu items yet";
-    case "history":{let c=0,tr=0;for(let i=1;i<=28;i++){const d=addDays(t,-i),st=dayStatus(S.days[d]);if(isClosed(d)&&!st.any)continue;tr++;if(st.complete)c++}return `${c} of ${tr} days complete`}
+    case "history":{let c=0,tr=0;for(let i=1;i<=28;i++){const d=addDays(t,-i),st=dayStatus(S.days[d],null,d);if(isClosed(d)&&!st.any)continue;tr++;if(st.complete)c++}return `${c} of ${tr} days complete`}
     case "eho":{const l=inspSorted()[0];if(!l)return "No inspection recorded";const o=(l.issues||[]).filter(i=>!i.done).length;return `Rating ${l.rating??"–"} · ${o?n(o,"issue")+" open":"no open issues"}`}
     case "plans":{const due=S.plans.filter(d=>reviewState(d).overdue).length;return S.plans.length?`${n(S.plans.length,"document")}${due?` · ${due} due for review`:""}`:"None yet: start from a template"}
     case "deliveries":{const td=S.deliveries.filter(d=>d.date===t),rj=td.filter(d=>d.outcome==="rejected").length,l=[...S.deliveries].sort((a,b)=>(b.at||0)-(a.at||0))[0];
@@ -2399,14 +2403,19 @@ function unitRow(u,i){
   r.append(nm,s,el("button",{class:"btn ghost",disabled:ro(),onclick:()=>{SE.units.splice(i,1);sDirty();buildSetup()}},"Remove"));
   return r;
 }
-const cleanList=l=>l.map(c=>({id:c.id,t:String(c.t||"").trim(),...(c.off?{off:true}:{})})).filter(c=>c.t);
+// prev: the list as saved before. A check that's new, or was turned off and is now back on, applies from today.
+const cleanList=(l,prev)=>l.map(c=>{
+  const was=(prev||[]).find(p=>p.id===c.id);
+  const from=!was||(was.off&&!c.off)?today():was.from;
+  return{id:c.id,t:String(c.t||"").trim(),...(c.off?{off:true}:{}),...(from?{from}:{})};
+}).filter(c=>c.t);
 function storable(s){const o={...s};delete o.fresh;return o}
 async function saveSetup(){
   if(ro()||!SE)return;
   const site=S.site,s=SE;
   const next={...storable(S.settings),info:{...s.info},closedDays:[...s.closedDays],hide:{...s.hide},proveOff:[...s.proveOff],
     units:s.units.map(u=>({id:u.id,name:String(u.name||"").trim()||"Unnamed unit",kind:u.kind})),
-    opening:cleanList(s.opening),closing:cleanList(s.closing),weekly:cleanList(s.weekly),updatedBy:S.me,updatedAt:Date.now()};
+    opening:cleanList(s.opening,S.settings.fresh?null:S.settings.opening),closing:cleanList(s.closing,S.settings.fresh?null:S.settings.closing),weekly:cleanList(s.weekly,S.settings.fresh?null:S.settings.weekly),updatedBy:S.me,updatedAt:Date.now()};
   if(s.startDate)next.startDate=s.startDate;
   if(s.startTouched||s.startAll)next.startSet=true;
   if(!next.startDate)next.startDate=today();
@@ -2441,8 +2450,8 @@ function mergeList(k,src,tgt){
   const out=[],used=new Set(),added=[],removed=[],kept=[],taken=new Set(tgt.map(x=>x.id));
   src.forEach((c,i)=>{
     const m=tgt.find(x=>!used.has(x.id)&&normT(x.t)===normT(c.t));
-    if(m){used.add(m.id);out.push({id:m.id,t:c.t,...(m.off?{off:true}:{})})}
-    else{let id=c.id;if(taken.has(id)||out.some(o=>o.id===id))id=k[0]+Date.now().toString(36)+i;out.push({id,t:c.t});added.push(c.t)}
+    if(m){used.add(m.id);out.push({id:m.id,t:c.t,...(m.off?{off:true}:{}),...(m.from?{from:m.from}:{})})}
+    else{let id=c.id;if(taken.has(id)||out.some(o=>o.id===id))id=k[0]+Date.now().toString(36)+i;out.push({id,t:c.t,from:today()});added.push(c.t)}
   });
   for(const x of tgt)if(!used.has(x.id)){
     if(S.shared&&!sharedHas(k,x.t)){out.push(x);kept.push(x.t)}else removed.push(x.t);
