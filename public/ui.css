@@ -269,7 +269,8 @@ html{scroll-padding-top:calc(env(safe-area-inset-top,0px) + 72px);scroll-padding
 .xmore .lastdate .label{margin:0;flex:0 0 auto}
 .xmore input[type=date]{flex:1 1 150px;width:auto;min-width:0;max-width:220px}
 .hist{list-style:none;margin:0;padding:0;display:grid;gap:4px;font-size:14px}
-.hist li{display:flex;gap:10px}
+.hist li{display:flex;gap:10px;align-items:center}
+.hist li .btn.sm{min-height:32px;padding:0 10px;font-size:13px}
 .hist li .s{flex:1}
 .facts{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;margin:0;font-size:14px}
 .facts dt{color:var(--muted);font-weight:600}
