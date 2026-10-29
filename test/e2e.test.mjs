@@ -317,6 +317,29 @@ test("staff journey on the real page", async () => {
   assert.ok((await api("get", { path: "settings/main" })).data.opening.length >= 2, "the Roastery's checks are kept");
   await switchSite(page, "Roastery");
 
+  // A closing check added today counts from today: yesterday's completed day stays complete.
+  const yd = await page.evaluate(() => { const d = new Date(); d.setDate(d.getDate() - 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; });
+  const rs = (await api("get", { path: "settings/main" })).data;
+  await api("set", { path: `days/${yd}`, data: { date: yd, opening: { items: Object.fromEntries(rs.opening.map((c) => [c.id, true])), by: "web:Sam Patel", at: 1 },
+    closing: { items: Object.fromEntries(rs.closing.map((c) => [c.id, true])), by: "web:Sam Patel", at: 1 }, temps: Object.fromEntries(rs.units.map((u) => [u.id, { am: { v: u.kind === "freezer" ? -19 : 3, by: "web:Sam Patel", at: 1 } }])),
+    signed: { by: "web:Sam Patel", at: 1, name: "Sam Patel" } } });
+  await openSection(page, "setup");
+  await page.locator('[data-addchk="closing"]').click();
+  await page.locator("#ceClosing .chk-row input[type=text]").last().fill("Coffee grounds bin emptied");
+  await page.click("#saveSetup");
+  await page.locator("#setupMsg", { hasText: "Setup saved for the Roastery." }).waitFor();
+  const added = (await api("get", { path: "settings/main" })).data.closing.find((c) => c.t === "Coffee grounds bin emptied");
+  assert.equal(added.from, t0d, "new check counts from today");
+  assert.ok((await api("get", { path: "settings/main" })).data.closing.filter((c) => c.t !== "Coffee grounds bin emptied").every((c) => !c.from), "existing checks keep no date");
+  await openSection(page, "history");
+  assert.match(await page.locator(`#strip .cd[aria-label="${await page.evaluate((d) => new Date(d + "T12:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }), yd)}"]`).getAttribute("class"), /\bok\b/, "yesterday still complete");
+  await openSection(page, "day");
+  await page.fill("#dayDate", yd); await page.locator("#dayDate").dispatchEvent("change");
+  await page.locator("#closeList label").first().waitFor({ state: "attached" });
+  assert.equal(await page.locator("#closeList label", { hasText: "Coffee grounds bin emptied" }).count(), 0, "not on yesterday's list");
+  await page.fill("#dayDate", t0d); await page.locator("#dayDate").dispatchEvent("change");
+  await page.locator("#closeList label", { hasText: "Coffee grounds bin emptied" }).waitFor({ state: "attached" });
+
   // Sign out, then sign in as the new member of staff: username + temporary password, then their own.
   await accountMenu(page, "Sign out");
   await page.waitForURL(/\/signin$/);

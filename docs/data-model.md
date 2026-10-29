@@ -51,12 +51,14 @@ Timestamps (`at`, `lastAt`, `createdAt`, `updatedAt`) are ms since epoch. Dates 
 **`settings/main`**, one per site: the site's setup.
 ```
 units:[{id,name,kind:"fridge"|"freezer"}]
-opening|closing|weekly:[{id,t,off?:true}]     // checks; off = turned off at this site
+opening|closing|weekly:[{id,t,off?:true,from?}]     // checks; off = turned off at this site; from = YYYY-MM-DD it counts from
 closedDays:[0..6]   // 0 = Sunday
 hide:{<tab>:true}   // sections not used at this site
 proveOff:[<method>]  trainingOff:[<topic>]  info:{address,manager,note}  startDate  startSet?
 updatedBy, updatedAt, publishedAt?, publishedFrom?
 ```
+A check's `from` is the day it was added (saved in Setup, or published to the site) or switched back on. Days before it don't include that check, so adding checks never makes past days incomplete. Checks without `from` have always applied. End-of-week checks count from the week that contains their `from` date.
+
 `startDate` (YYYY-MM-DD) is the first day the diary counts at the site. It is filled in with the date Setup is first saved; then empty earlier days are never counted as missed. `startSet: true` means someone chose it in Setup → Diary starts on (optionally for all four sites): every day before it is left out of Last 4 weeks and EHO inspection mode, though the records stay in the database and can still be opened by date. Cleaning and extra checks have their own `lastAt` dates and are not affected.
 
 
