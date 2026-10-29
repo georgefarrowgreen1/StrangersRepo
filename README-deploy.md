@@ -10,9 +10,10 @@ The site is one Cloudflare Worker serving the diary's pages and the API they tal
 | `public/signin.html`, `public/signin.js` | Sign-in, choosing a new password, changing a password, first-admin setup and admin password recovery. |
 | `public/admin.html`, `public/admin.js` | The Admin page: people and roles. |
 | `public/icon-*.png`, `public/manifest.webmanifest` | Home Screen icon and app settings. |
+| `public/pdf.js` | Makes PDFs on the device (allergen matrix, EHO inspection records): Helvetica text, tables and the logo, no libraries. |
 | `public/pinpad.js` | The 4-digit PIN pad for quick switching, used by the diary and the sign-in page. |
 | `src/` | The Worker: `index.ts` (routing, security headers and the nightly job), `access.ts` (who can reach what: access control, roles and write rate limiting, in one place), `auth.ts` (sign-in, sessions and quick switching), `admin.ts` (admin API), `backup.ts` (nightly backups), `docs.ts` (the db API), `assets.ts` (PDFs), `paths.ts` (allowed document paths), `schema.ts` (database tables, created automatically). |
-| `.github/workflows/test.yml` | Runs every test on GitHub for each push and pull request. |
+| `.github/workflows/test.yml`, `.github/annotate.mjs` | Runs every test on GitHub for each pull request and each merge to `main`; posts a failing test's message as an annotation. |
 | `.github/workflows/automerge.yml` | Squash-merges each pull request into `main` by itself once Tests passes. |
 | `test/` | `api.test.mjs` and `migration.test.mjs` (the API, against `wrangler dev`) and `e2e.test.mjs` (the site in a browser, phone-sized). |
 
@@ -34,7 +35,7 @@ Data lives in a D1 database (`kitchen-diary`) and allergen PDFs in a KV namespac
 
 Edit the files in `public/` (or `src/` for the API), run the tests, and push to `main`. The deploy takes about a minute. If a deploy fails, the build log is in the Cloudflare dashboard under the Worker → **Deployments**, and GitHub shows a red cross next to the commit.
 
-**Tests on GitHub.** Every push and pull request runs the typecheck, the API tests and the browser test (the "Tests" check). Cloudflare deploys whatever reaches `main`, so the safe way to change the site is a branch and a pull request, merged once Tests is green. That's a rule on `main` (GitHub → the repo → **Settings → Rules → Rulesets**: "Tests must pass", requiring the **test** status check).
+**Tests on GitHub.** Every pull request, and every merge to `main`, runs the typecheck, the API tests and the browser test (the "Tests" check). If one fails, its error message is shown as an annotation on the check. Cloudflare deploys whatever reaches `main`, so the safe way to change the site is a branch and a pull request, merged once Tests is green. That's a rule on `main` (GitHub → the repo → **Settings → Rules → Rulesets**: "Tests must pass", requiring the **test** status check).
 
 **Auto-merge.** Every pull request into `main` is squash-merged by itself as soon as Tests passes (`.github/workflows/automerge.yml`), then Cloudflare deploys it, so there's nothing to press. If Tests fails, the pull request stays open with a red cross until it's fixed. To hold a change back, open it as a **draft** pull request (or "Convert to draft" on an open one): drafts aren't merged until they're marked "Ready for review". Auto-merge needs **Settings → General → Allow auto-merge** switched on (it is), and squash merging allowed.
 

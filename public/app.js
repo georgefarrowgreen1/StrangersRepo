@@ -1659,7 +1659,273 @@ function editAlg(it){
 }
 
 const algPick=sitePicker("alg_sites");$("#algSites").replaceWith(algPick.el);
-const adPick=sitePicker("ad_sites");$("#adSites").replaceWith(adPick.el);
+
+/* ---------- PDFs made on the device (public/pdf.js) ---------- */
+let LOGO_D=null;
+fetch("/logo.svg").then(r=>r.ok?r.text():"").then(t=>{const m=/ d="([^"]+)"/.exec(t||"");LOGO_D=m?m[1]:null}).catch(()=>{});
+const fullName=id=>id&&id===S.me?(S.myName||"you"):nameOf(id);
+const longNow=()=>new Date().toLocaleString("en-GB",{day:"numeric",month:"long",year:"numeric",hour:"2-digit",minute:"2-digit"});
+const pdfDate=s=>s?parse(s).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"}):"";
+// Running header: the Strangers logo, a title and up to three lines underneath. Returns where the page body starts.
+function pdfHeader(title,lines){
+  return(doc,m)=>{
+    if(LOGO_D)doc.svg(LOGO_D,m,m,0.31);
+    const x=m+(LOGO_D?78:0);
+    doc.text(title,x,m+17,{size:17,bold:true});
+    (lines||[]).slice(0,3).forEach((l,i)=>doc.text(l,x,m+31+i*11,{size:8.5,color:"#555555"}));
+    const y=m+Math.max(42,31+(lines||[]).length*11);
+    doc.line(m,y,doc.W-m,y,{color:"#2b2f36",lw:0.8});
+    return y+12;
+  };
+}
+// Cell styles in PDF tables, matching the pills on screen.
+const PDF_CLS={bad:{color:"#b3261e",fill:"#fde2df"},warn:{color:"#7a4b00",fill:"#fff1d6"},ok:{color:"#17733a"},muted:{color:"#777777"}};
+const pdfCell=c=>{if(c==null||typeof c!=="object")return c;const st=PDF_CLS[c.cls]||{};return{t:c.t,bold:c.b,tick:c.tick,color:st.color,fill:c.tick?"#fde2df":st.fill,...(c.tick?{color:"#b3261e"}:{})}};
+function pdfTable(f,cols,rows,opts){f.table(cols.map(c=>({label:c.l,w:c.w,flex:c.flex,align:c.align,rotate:c.rotate,bold:c.bold})),rows.map(r=>r.map(pdfCell)),opts)}
+
+/* ---------- allergen matrix PDF ---------- */
+const allergenItems=()=>[...S.allergens].sort((a,b)=>a.name.localeCompare(b.name));
+const ALG_COLS=()=>[{l:"Menu item",w:165,bold:true},...ALLERGENS.map(a=>({l:a,w:27,align:"center",rotate:true})),{l:"Notes: may contain, swaps",flex:1}];
+const algRows=items=>items.map(it=>{const h=new Set(it.contains||[]);
+  return[it.name,...ALLERGENS.map(a=>h.has(a)?{tick:true}:""),[it.notes,it.source?"Source: "+it.source:""].filter(Boolean).join("\n")]});
+const ALG_KEY="A tick means the item contains that allergen, or an ingredient made from it. Cereals with gluten include wheat, rye, barley and oats; tree nuts include almonds, hazelnuts, walnuts, cashews, pecans, Brazil nuts, pistachios and macadamias; sulphites are listed above 10 mg/kg. Recipes and suppliers change: check this matrix is current, and if a customer has an allergy and you're not sure, ask a manager before serving.";
+function allergenPdf(){
+  const items=allergenItems();
+  if(!items.length){toast("Add menu items first: the matrix is made from them.");return}
+  const P=window.DiaryPDF,site=curSite(),addr=siteAddr(S.site,S.settings);
+  const last=Math.max(...items.map(i=>i.at||0));
+  const doc=P.create({landscape:true,title:`Allergen matrix - Strangers Coffee ${site.name}`,author:S.myName});
+  const f=new P.Flow(doc,{footer:`Strangers Coffee ${site.name} · allergen matrix · made ${longNow()}`,
+    header:pdfHeader("Allergen matrix",[`Strangers Coffee ${site.name} · ${addr}`,`The 14 allergens UK law requires you to declare · ${items.length} menu item${items.length===1?"":"s"}${last?" · last changed "+new Date(last).toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"}):""}`])});
+  pdfTable(f,ALG_COLS(),algRows(items),{rotateHead:true,headH:96,size:8.5});
+  f.gap(10).para(ALG_KEY,{size:8.5,color:"#444444"});
+  P.save(f.finish(),`Allergen matrix - Strangers ${site.name} - ${today()}.pdf`);
+}
+
+/* ---------- EHO inspection mode ----------
+   Everything an Environmental Health Officer usually asks to see, for one site and a chosen period, in one view
+   that can be exported as a PDF. Read-only, and open to everyone signed in, so whoever is on shift can show it. */
+const IN_RANGES=[["1","Last month"],["2","Last 2 months"],["3","Last 3 months"],["6","Last 6 months"],["12","Last 12 months"],["custom","Choose dates"]];
+let IN={range:(()=>{try{return localStorage.getItem("sfbb.inRange")||"1"}catch(e){return"1"}})(),from:"",to:"",data:null,key:"",loading:null,err:""};
+function inPeriod(){
+  if(IN.range==="custom"){const a=$("#inFrom").value,b=$("#inTo").value;if(!a||!b)return null;return a<=b?{from:a,to:b}:{from:b,to:a}}
+  const d=parse(today());d.setMonth(d.getMonth()-Number(IN.range));d.setDate(d.getDate()+1);
+  return{from:iso(d),to:today()};
+}
+function inspectForm(){
+  const box=$("#inChips");
+  for(const[k,l]of IN_RANGES)box.append(el("button",{type:"button",role:"radio","data-r":k,onclick:()=>{IN.range=k;try{localStorage.setItem("sfbb.inRange",k)}catch(e){}renderInspect()}},l));
+  $("#inFrom").value=addDays(today(),-27);$("#inTo").value=today();
+  for(const x of["#inFrom","#inTo"])$(x).addEventListener("change",()=>renderInspect());
+  $("#inPdf").addEventListener("click",inspectPdf);
+}
+async function loadInspect(site,p){
+  const key=`${site}|${p.from}|${p.to}`;
+  if(IN.key===key&&(IN.data||IN.loading))return;
+  IN.key=key;IN.data=null;IN.err="";
+  const get=async(col,order,limit)=>(await C(col,site).orderBy(order,"desc").limit(limit).get()).docs.map(d=>({id:d.id,...d.data()}));
+  const job=IN.loading=Promise.all([get("days","date",2000),get("weeks","week",500),get("reviews","date",500),get("proveit","at",2000),get("deliveries","at",2000)]).then(([days,weeks,reviews,prove,deliveries])=>{
+    if(IN.loading!==job)return;
+    const inR=d=>d&&d>=p.from&&d<=p.to;
+    IN.data={site,from:p.from,to:p.to,days:Object.fromEntries(days.map(d=>[d.id,d])),weeks:weeks.filter(w=>w.week<=p.to&&addDays(w.week,6)>=p.from),
+      reviews:reviews.filter(r=>inR(r.date)),prove:prove.filter(r=>inR(r.date)),deliveries:deliveries.filter(r=>inR(r.date))};
+    IN.loading=null;
+    const ids=[];for(const d of days){if(d.signed)ids.push(d.signed.by);if(d.problems)ids.push(d.problems.by);if(d.opening)ids.push(d.opening.by);if(d.closing)ids.push(d.closing.by)}
+    resolveNames(ids);
+    if(S.tab==="inspect")renderInspect();
+  },e=>{if(IN.loading!==job)return;IN.loading=null;IN.key="";IN.err=(e&&e.message)||"Couldn't load the records.";if(S.tab==="inspect")renderInspect()});
+}
+// Every section of the report, built once and drawn both on screen and in the PDF.
+// A cell is text or {t, cls:"ok"|"warn"|"bad"|"muted", b:bold, tick}.
+function inspectSections(R){
+  const s=S.settings,cfg=S.cfg,site=curSite(),out=[];
+  const inR=d=>d&&d>=R.from&&d<=R.to,atIn=ts=>ts&&inR(iso(new Date(ts)));
+  const dates=[];for(let d=R.to;d>=R.from;d=addDays(d,-1))dates.push(d);
+  const keys=Object.keys(R.days).sort(),start=s.startDate||keys[0]||R.to;
+  const units=[...s.units];
+  for(const d of Object.values(R.days))for(const id of Object.keys(d.temps||{}))if(!units.some(u=>u.id===id))units.push({id,name:"Unit "+id,kind:"fridge"});
+  const tval=(d,u)=>{const r=d&&d.temps&&d.temps[u.id]&&d.temps[u.id].am;return r&&r.v!=null?Number(r.v):null};
+
+  // Daily diary
+  let open=0,complete=0,partial=0,missing=0,readings=0,outOfRange=0;
+  const dayRows=[],tempRows=[],actions=[];
+  for(const date of dates){
+    const d=R.days[date],st=dayStatus(d,cfg),closed=isClosed(date,s)&&!(st.any),before=date<start;
+    if(before&&!d)continue;
+    if(closed){dayRows.push([pdfDate(date),{t:"Closed",cls:"muted"},"","","",""]);continue}
+    open++;
+    if(!d||!st.any){
+      if(date===today()){open--;dayRows.push([pdfDate(date),{t:"Today: not started yet",cls:"warn"},"","","",""]);continue}
+      missing++;dayRows.push([pdfDate(date),{t:"Not recorded",cls:"bad"},"","","",""]);continue}
+    if(st.complete)complete++;else partial++;
+    const part=(n,t,by)=>({t:`${n}/${t}${by&&n?" · "+fullName(by):""}`,cls:n>=t?"ok":n?"warn":"bad"});
+    const temps=units.map(u=>{const v=tval(d,u);if(v==null)return null;readings++;const c=tempState(u.kind,v);if(c==="bad")outOfRange++;return{u,v,c}}).filter(Boolean);
+    dayRows.push([pdfDate(date),part(st.oN,cfg.opening.length,d.opening&&d.opening.by),
+      {t:temps.length?temps.map(x=>`${x.u.name} ${x.v}°C`).join(", "):"None",cls:temps.some(x=>x.c==="bad")?"bad":temps.length<units.length?"warn":"ok"},
+      part(st.cN,cfg.closing.length,d.closing&&d.closing.by),
+      d.signed?{t:d.signed.name||fullName(d.signed.by),cls:"ok"}:{t:"Not signed",cls:"bad"},
+      d.problems&&d.problems.text?d.problems.text:""]);
+    if(units.length)tempRows.push([pdfDate(date),...units.map(u=>{const v=tval(d,u);return v==null?{t:"–",cls:"muted"}:{t:v+"°C",cls:tempState(u.kind,v)==="bad"?"bad":tempState(u.kind,v)==="warn"?"warn":""}})]);
+    for(const x of temps.filter(x=>x.c==="bad"))actions.push({date,area:"Temperature",what:`${x.u.name} read ${x.v}°C (${x.u.kind==="freezer"?"should be −18°C or below":"should be 5°C or below"})`,
+      did:d.problems&&d.problems.text?d.problems.text:{t:"No action noted",cls:"bad"},by:d.problems?fullName(d.problems.by):""});
+    if(d.problems&&d.problems.text&&!temps.some(x=>x.c==="bad"))actions.push({date,area:"Daily diary",what:"Problem or change noted",did:d.problems.text,by:fullName(d.problems.by)});
+  }
+  for(const w of R.weeks)if(w.notes&&w.notes.text)actions.push({date:w.week,area:"Week",what:"Weekly note",did:w.notes.text,by:fullName(w.notes.by)});
+  for(const r of R.prove.filter(r=>r.pass===false))actions.push({date:r.date,area:"Prove it",what:`${(PROVE[r.method]||{label:r.method}).label}: ${r.food}${r.reading!=null?" "+r.reading+(r.unit==="min"?" min":"°C"):""} failed`,did:r.action||{t:"No action noted",cls:"bad"},by:fullName(r.by)});
+  for(const r of R.deliveries){const p=[r.chilled!=null&&r.chilled>8?`chilled ${r.chilled}°C`:"",r.frozen!=null&&r.frozen>-15?`frozen ${r.frozen}°C`:"",r.packaging==="no"?"packaging damaged":"",r.order==="no"?"not what was ordered":""].filter(Boolean);
+    if(r.outcome==="rejected"||p.length)actions.push({date:r.date,area:"Delivery",what:`${r.supplier}: ${p.join(", ")||"rejected"}`,did:`${r.outcome==="rejected"?"Rejected":"Accepted"}${r.note?": "+r.note:""}`,by:fullName(r.by)})}
+  const maintAll=S.maintenance;
+  for(const m of maintAll)if(m.status==="done"&&atIn(m.doneAt))actions.push({date:iso(new Date(m.doneAt)),area:"Maintenance",what:m.title+(m.area?` (${m.area})`:""),did:m.fixNote||"Done",by:fullName(m.doneBy)});
+  const insp=inspSorted()[0];
+  if(insp)for(const i of(insp.issues||[]))if(i.done&&atIn(i.doneAt))actions.push({date:iso(new Date(i.doneAt)),area:"EHO issue",what:i.issue,did:i.fixNote||"Fixed",by:fullName(i.doneBy)});
+  actions.sort((a,b)=>b.date.localeCompare(a.date));
+
+  // Cleaning and extra checks
+  const taskRows=kind=>S[kind].slice().sort((a,b)=>a.name.localeCompare(b.name)).map(t=>{const ts=taskState(t),n=(t.log||[]).filter(e=>atIn(e.at)).length;
+    return[t.name,t.how||"",(t.freq||"").replace(/^./,c=>c.toUpperCase()),t.who||"",t.lastAt?lastWhen(t.lastAt,t.lastSet)+", "+fullName(t.lastBy):{t:"Never",cls:"bad"},String(n),{t:ts.overdue?ts.text:"Up to date",cls:ts.overdue?"bad":"ok"}]});
+  const overdue=["cleaning","extras"].reduce((k,kind)=>k+S[kind].filter(t=>taskState(t).overdue).length,0);
+  const topics=siteTopics(),trained=S.staff.filter(p=>topics.every(([k])=>p.topics&&p.topics[k])).length;
+  const openM=maintAll.filter(m=>m.status!=="done"),urgent=openM.filter(m=>m.priority==="urgent").length;
+  const rej=R.deliveries.filter(r=>r.outcome==="rejected").length,pf=R.prove.filter(r=>r.pass===false).length;
+  const plansDue=S.plans.filter(d=>reviewState(d).overdue).length;
+  const period=`${pdfDate(R.from)} to ${pdfDate(R.to)}`;
+
+  out.push({id:"summary",title:"At a glance",
+    stats:[[`${complete}/${open}`,"days fully recorded",missing?"bad":partial?"warn":"ok"],[String(outOfRange),"temperatures out of range",outOfRange?"warn":"ok"],[String(actions.length),"corrective actions"],
+      [`${trained}/${S.staff.length}`,"staff fully trained",trained<S.staff.length?"warn":"ok"],[String(R.deliveries.length),`deliveries checked${rej?`, ${rej} rejected`:""}`],[String(overdue),"cleaning & checks overdue now",overdue?"bad":"ok"]],
+    facts:[["Site",`Strangers Coffee ${site.name}`],["Address",siteAddr(S.site,s)],["Manager",(s.info&&s.info.manager)||""],["Period",period],
+      ["Opening days",WEEKDAYS.filter(([k])=>!s.closedDays.includes(k)).map(([,l])=>l).join(", ")],
+      ["Daily diary",`${open} open days: ${complete} complete, ${partial} partly recorded, ${missing} not recorded`],
+      ["Temperatures",`${readings} readings, ${outOfRange} out of range · ${units.map(u=>u.name).join(", ")||"no fridges or freezers"}`],
+      ["Prove it checks",`${R.prove.length} in the period${pf?`, ${pf} failed`:""}`],
+      ["Maintenance",`${openM.length} open${urgent?`, ${urgent} urgent`:""}`],
+      ["HACCP & risk",`${S.plans.length} document${S.plans.length===1?"":"s"}${plansDue?`, ${plansDue} due for review`:""}`],
+      ["Last EHO inspection",insp?`${pdfDate(insp.inspectionDate)}${insp.rating!=null&&insp.rating!==""?" · rating "+insp.rating:""}`:"None recorded"],
+      ["Prepared",`${longNow()} by ${S.myName||"a team member"}`]]});
+  out.push({id:"documents",title:"Food safety documents",
+    cols:[{l:"Document",flex:2,bold:true},{l:"Type",w:110},{l:"Dated",w:80},{l:"Next review",w:80},{l:"Status",w:110}],
+    rows:[...S.plans.slice().sort((a,b)=>(a.title||"").localeCompare(b.title||"")).map(d=>{const rs=reviewState(d);return[d.title||PL_NAME[d.type],PL_NAME[d.type],pdfDate(d.date),pdfDate(d.reviewDate),{t:rs.text,cls:rs.cls}]}),
+      ["Allergen matrix","Allergens","","",{t:`${S.allergens.length} menu items`,cls:S.allergens.length?"ok":"bad"}],
+      ["Cleaning schedule","Cleaning","","",{t:`${S.cleaning.length} jobs`,cls:S.cleaning.length?"ok":"bad"}],
+      ["Supplier list","Suppliers","","",{t:`${S.suppliers.length} suppliers`,cls:S.suppliers.length?"ok":"warn"}],
+      ["Staff training records","Training","","",{t:`${S.staff.length} people`,cls:S.staff.length?"ok":"warn"}],
+      ...S.onboarding.map(d=>[d.title||"Onboarding document",d.category||"Onboarding",pdfDate(d.date),pdfDate(d.reviewDate),""])],
+    empty:""});
+  out.push({id:"daily",title:"Daily diary",intro:`Opening checks, temperatures, closing checks and sign-off for each day the ${site.name} was open.`,
+    cols:[{l:"Date",w:80},{l:"Opening checks",w:120},{l:"Temperatures",flex:1.2},{l:"Closing checks",w:120},{l:"Signed off by",w:100},{l:"Problems & changes",flex:1.5}],rows:dayRows,empty:"No days in this period."});
+  if(units.length)out.push({id:"temps",title:"Temperature log",intro:"Fridges 5°C or below (8°C legal maximum). Freezers −18°C or below.",
+    cols:[{l:"Date",w:80},...units.map(u=>({l:u.name,flex:1,align:"center"}))],rows:tempRows,empty:"No readings in this period."});
+  out.push({id:"actions",title:"Corrective actions",intro:"Problems found and what was done about them: diary notes, temperatures out of range, failed Prove it checks, deliveries, maintenance and inspection issues.",
+    cols:[{l:"Date",w:80},{l:"Area",w:80},{l:"What happened",flex:1.2},{l:"What was done",flex:1.5},{l:"By",w:90}],
+    rows:actions.map(a=>[pdfDate(a.date),a.area,a.what,a.did,a.by]),empty:"No problems recorded in this period."});
+  if(cfg.weekly.length)out.push({id:"weekly",title:"End-of-week checks",
+    cols:[{l:"Week starting",w:90},{l:"Checks done",w:90},{l:"Signed off by",w:110},{l:"Notes",flex:1}],
+    rows:R.weeks.slice().sort((a,b)=>b.week.localeCompare(a.week)).map(w=>{const n=cfg.weekly.filter(c=>w.items&&w.items[c.id]).length;
+      return[pdfDate(w.week),{t:`${n}/${cfg.weekly.length}`,cls:n>=cfg.weekly.length?"ok":n?"warn":"bad"},w.signed?{t:w.signed.name||fullName(w.signed.by),cls:"ok"}:{t:"Not signed",cls:"bad"},w.notes&&w.notes.text||""]}),empty:"No weeks recorded in this period."});
+  const tcols=[{l:"Task",flex:1.2,bold:true},{l:"Method",flex:1.6},{l:"How often",w:70},{l:"Who",w:80},{l:"Last done",w:110},{l:"Done in period",w:60,align:"center"},{l:"Status",w:95}];
+  out.push({id:"cleaning",title:"Cleaning schedule",cols:tcols,rows:taskRows("cleaning"),empty:"No cleaning jobs listed."});
+  if(S.extras.length)out.push({id:"extras",title:"Extra checks",cols:tcols,rows:taskRows("extras"),empty:""});
+  out.push({id:"prove",title:"Prove it checks",intro:"Probe checks of cooking, reheating, cooling and hot holding, and thermometer accuracy.",
+    cols:[{l:"Date",w:80},{l:"Check",w:120},{l:"Food or equipment",flex:1},{l:"Reading",w:60,align:"center"},{l:"Result",w:55,align:"center"},{l:"Action",flex:1.2},{l:"By",w:90}],
+    rows:R.prove.slice().sort((a,b)=>(b.date||"").localeCompare(a.date||"")).map(r=>[pdfDate(r.date),(PROVE[r.method]||{label:r.method}).label,r.food,r.reading==null?"":`${r.reading}${r.unit==="min"?" min":"°C"}`,{t:r.pass?"Pass":"Fail",cls:r.pass?"ok":"bad"},r.action||"",fullName(r.by)]),
+    empty:"No Prove it checks in this period."});
+  out.push({id:"deliveries",title:"Deliveries",intro:"Chilled 8°C or below (ideally 5°C), frozen −15°C or below (ideally −18°C), packaging undamaged and what was ordered.",
+    cols:[{l:"Date",w:72},{l:"Supplier",flex:1,bold:true},{l:"Delivered",flex:1},{l:"Chilled",w:46,align:"center"},{l:"Frozen",w:46,align:"center"},{l:"Packaging",w:58,align:"center"},{l:"Order",w:50,align:"center"},{l:"Outcome",w:60,align:"center"},{l:"Notes",flex:1.3},{l:"By",w:78}],
+    rows:R.deliveries.slice().sort((a,b)=>(b.at||0)-(a.at||0)).map(r=>{const tc=(k,v)=>{const x=dlvTempState(k,v);return x?{t:v+"°C",cls:x.cls==="ok"?"":x.cls}:r.noTemp?{t:"n/a",cls:"muted"}:""};
+      return[pdfDate(r.date)+(r.at?" "+time(r.at):""),r.supplier,r.items||"",tc("chilled",r.chilled),tc("frozen",r.frozen),{t:r.packaging==="ok"?"OK":"Damaged",cls:r.packaging==="ok"?"":"bad"},{t:r.order==="ok"?"OK":"Wrong",cls:r.order==="ok"?"":"bad"},{t:r.outcome==="rejected"?"Rejected":"Accepted",cls:r.outcome==="rejected"?"bad":"ok"},r.note||"",fullName(r.by)]}),
+    empty:"No deliveries recorded in this period."});
+  out.push({id:"training",title:"Staff training",intro:"The date each person was trained on each safe method.",
+    cols:[{l:"Name",w:110,bold:true},{l:"Role",w:75},{l:"Started",w:65},...topics.map(([,l])=>({l,flex:1,align:"center"}))],
+    rows:S.staff.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(p=>[p.name,p.role||"",pdfDate(p.start),...topics.map(([k])=>{const t=p.topics&&p.topics[k];return t?{t:pdfDate(t.date),cls:"ok"}:{t:"Not yet",cls:"bad"}})]),
+    empty:"No staff training records."});
+  out.push({id:"maintenance",title:"Maintenance",intro:"Equipment problems and maintenance jobs: everything still open, and anything reported or finished in the period.",
+    cols:[{l:"Reported",w:72},{l:"Job",flex:1.2,bold:true},{l:"Equipment or area",w:95},{l:"Urgency",w:70},{l:"Status",w:110},{l:"What was done",flex:1.2}],
+    rows:maintAll.filter(m=>m.status!=="done"||atIn(m.reportedAt)||atIn(m.doneAt)).sort((a,b)=>(b.reportedAt||0)-(a.reportedAt||0)).map(m=>{const pr=mtPri(m.priority);
+      return[m.reportedAt?pdfDate(iso(new Date(m.reportedAt))):"",m.title,m.area||"",{t:pr[1],cls:pr[3]},m.status==="done"?{t:`Done ${m.doneAt?pdfDate(iso(new Date(m.doneAt))):""}`,cls:"ok"}:{t:"Open",cls:pr[0]==="urgent"?"bad":"warn"},m.fixNote||m.details||""]}),
+    empty:"No maintenance jobs."});
+  out.push({id:"reviews",title:"4-weekly reviews",
+    cols:[{l:"Date",w:80},{l:"Signed by",w:100},{l:"Changes reported",flex:1.4},{l:"Actions taken",flex:1.4}],
+    rows:R.reviews.slice().sort((a,b)=>b.date.localeCompare(a.date)).map(r=>[pdfDate(r.date),fullName(r.by),REVIEW_QS.filter(([k])=>r.answers&&r.answers[k]&&r.answers[k].a==="Yes"&&k!=="methods").map(([k,q])=>q.replace(/\?$/,"")+(r.answers[k].d?": "+r.answers[k].d:"")).join("\n")||"None",r.notes||""]),
+    empty:"No 4-weekly reviews in this period."});
+  out.push({id:"allergens",title:"Allergen matrix",intro:"The 14 allergens UK law requires you to declare.",cols:ALG_COLS(),rows:algRows(allergenItems()),empty:"No menu items listed.",matrix:true,after:ALG_KEY});
+  out.push({id:"suppliers",title:"Suppliers",
+    cols:[{l:"Supplier",flex:1,bold:true},{l:"Supplies",flex:1.2},{l:"Contact",w:90},{l:"Phone",w:85},{l:"Hygiene rating",w:80},{l:"Notes",flex:1.2}],
+    rows:S.suppliers.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(x=>[x.name,x.supplies||"",x.contact||"",x.phone||"",x.rating||"",x.notes||""]),empty:"No suppliers listed."});
+  if(insp)out.push({id:"inspection",title:"Last EHO inspection",
+    facts:[["Date",pdfDate(insp.inspectionDate)],["Inspector",[insp.inspector,insp.authority].filter(Boolean).join(", ")],["Visit",insp.visitType],["Rating",insp.rating!=null?String(insp.rating):""],
+      ["Scores",insp.scores?[["Food handling",insp.scores.hygiene],["Cleanliness & structure",insp.scores.structure],["Management",insp.scores.management]].filter(x=>x[1]!==""&&x[1]!=null).map(x=>x.join(" ")).join(" · "):""],
+      ["Revisit",pdfDate(insp.revisitDate)],["Summary",insp.summary]],
+    cols:[{l:"Issue",flex:1.4},{l:"Area",w:80},{l:"Action required",flex:1.4},{l:"Deadline",w:72},{l:"Status",w:120}],
+    rows:(insp.issues||[]).map(i=>[i.issue,i.area||"",i.action||"",pdfDate(i.deadline),i.done?{t:`Done${i.doneAt?" "+pdfDate(iso(new Date(i.doneAt))):""}${i.fixNote?": "+i.fixNote:""}`,cls:"ok"}:{t:"Open",cls:"bad"}]),empty:"No issues recorded."});
+  for(const d of S.plans.slice().sort((a,b)=>(a.type||"").localeCompare(b.type||"")||(a.title||"").localeCompare(b.title||""))){
+    const k=d.type,cols=PL_COLS[k];if(!cols)continue;
+    out.push({id:"plan-"+d.id,title:d.title||PL_NAME[k],plan:true,intro:PL_NAME[k],
+      facts:PL_META[k].map(([f,l,t])=>[l,t==="date"?pdfDate(d[f]):d[f]]).concat([["Notes",d.notes]]),
+      cols:cols.map(([f,l,t])=>({l,flex:t==="w-l"?1.6:t==="w-m"?1.2:t==="w-s"?0.9:0.55,align:t==="chk"||t==="num"||t==="rate"?"center":undefined})),
+      rows:(d[rowsKey(k)]||[]).map(r=>cols.map(([f,,t])=>t==="chk"?(r[f]?{t:"Yes",b:true}:""):t==="rate"?(()=>{const x=riskOf(r);return{t:x.text,cls:x.cls}})():t==="date"?pdfDate(r[f]):(r[f]==null||r[f]===0?"":String(r[f])))),
+      empty:"No rows."});
+  }
+  return out;
+}
+const inCls=c=>c&&typeof c==="object"?c:{t:c==null?"":String(c)};
+function renderInspect(){
+  const box=$("#inReport");if(!box||S.tab!=="inspect")return;
+  for(const b of document.querySelectorAll("#inChips button")){const on=b.dataset.r===IN.range;b.classList.toggle("on",on);b.setAttribute("aria-checked",String(on))}
+  $("#inCustom").hidden=IN.range!=="custom";
+  const p=inPeriod();
+  $("#inSub").textContent=p?`${pdfDate(p.from)} to ${pdfDate(p.to)} · ${curSite().name}`:"Choose a start and end date.";
+  if(!p||!S.db){box.replaceChildren();$("#inJump").replaceChildren();$("#inPdf").disabled=true;return}
+  loadInspect(S.site,p);
+  const R=IN.data&&IN.key===`${S.site}|${p.from}|${p.to}`?IN.data:null;
+  $("#inPdf").disabled=!R;
+  $("#inMsg").textContent=IN.err?IN.err:R?"":"Gathering the records…";
+  if(!R){box.replaceChildren(el("div",{class:"empty glass",text:IN.err?"Couldn't gather the records. Check the connection and try again.":"Gathering the records…"}));$("#inJump").replaceChildren();return}
+  const secs=inspectSections(R);
+  $("#inJump").replaceChildren(...secs.filter(x=>!x.plan).map(x=>el("button",{type:"button",class:"fchip",onclick:()=>{const n=document.getElementById("in-"+x.id);if(n)n.scrollIntoView({behavior:"smooth",block:"start"})}},x.title)),
+    ...(secs.some(x=>x.plan)?[el("button",{type:"button",class:"fchip",onclick:()=>{const n=document.querySelector("[id^='in-plan-']");if(n)n.scrollIntoView({behavior:"smooth",block:"start"})}},"HACCP & risk")]:[]));
+  box.replaceChildren(...secs.map(x=>{
+    const sec=el("section",{class:"panel inrep",id:"in-"+x.id});
+    sec.append(el("h2",{text:x.title}));
+    if(x.intro)sec.append(el("p",{class:"note",text:x.intro}));
+    if(x.stats)sec.append(el("div",{class:"instats"},...x.stats.map(([n,l,c])=>el("div",{class:"stat glass"},el("b",{class:c||"",text:n}),el("span",{text:l})))));
+    if(x.facts)sec.append(xfacts(x.facts.filter(f=>f[1]))); 
+    if(x.cols){
+      if(!x.rows.length){if(x.empty)sec.append(el("p",{class:"by",text:x.empty}))}
+      else{
+        const head=el("tr",{},...x.cols.map(c=>el("th",{class:(c.rotate?"al ":"")+(c.align==="center"?"c":""),text:c.l})));
+        const tb=el("tbody",{},...x.rows.map(r=>el("tr",{},...r.map((c,i)=>{c=inCls(c);
+          return el("td",{class:[x.cols[i].align==="center"?"c":"",c.cls?"is-"+c.cls:"",c.b||x.cols[i].bold?"b":""].filter(Boolean).join(" ")},c.tick?el("span",{class:"y",title:x.cols[i].l,text:"●"}):c.t)}))));
+        sec.append(el("div",{class:"scroll"},el("table",{class:"rep"+(x.matrix?" matrix":"")},el("thead",{},head),tb)));
+      }
+    }
+    if(x.after)sec.append(el("p",{class:"note",text:x.after}));
+    return sec;
+  }));
+}
+function inspectPdf(){
+  const p=inPeriod(),R=IN.data;if(!p||!R)return;
+  const P=window.DiaryPDF,site=curSite(),secs=inspectSections(R);
+  const doc=P.create({landscape:true,title:`EHO inspection records - Strangers Coffee ${site.name}`,author:S.myName});
+  const f=new P.Flow(doc,{footer:`Strangers Coffee ${site.name} · EHO inspection records ${pdfDate(R.from)} to ${pdfDate(R.to)} · made ${longNow()}`,
+    header:pdfHeader("Food safety records",[`Strangers Coffee ${site.name} · ${siteAddr(S.site,S.settings)}`,`Period: ${pdfDate(R.from)} to ${pdfDate(R.to)} · Safer Food, Better Business diary and records`])});
+  // Contents
+  f.heading("Contents",{size:13}).para(secs.map((x,i)=>`${i+1}. ${x.title}${x.plan?` (${x.intro})`:""}`).join("\n"),{size:9});
+  f.gap(6);
+  secs.forEach((x,i)=>{
+    if(x.plan||x.id==="allergens")f.startPage(false);
+    f.heading(`${i+1}. ${x.title}`,{size:13});
+    if(x.intro)f.para(x.intro,{size:8.5,color:"#555555"}).gap(4);
+    if(x.stats)f.facts(x.stats.map(([n,l])=>[n,l]),{labelW:70,size:10});
+    if(x.facts){if(x.stats)f.gap(6);f.facts(x.facts.filter(r=>r[1]),{size:9})}
+    if(x.cols){if(x.facts||x.stats)f.gap(6);
+      if(x.rows.length)pdfTable(f,x.cols,x.rows,x.matrix?{rotateHead:true,headH:96,size:8}:{size:7.8,head:7.5});
+      else if(x.empty)f.para(x.empty,{size:9,color:"#555555"});
+    }
+    if(x.after)f.gap(6).para(x.after,{size:8,color:"#555555"});
+    f.gap(14);
+  });
+  P.save(f.finish(),`EHO inspection records - Strangers ${site.name} - ${R.from} to ${R.to}.pdf`);
+}
 
 /* ---------- review ---------- */
 function reviewPeriod(){
@@ -1709,22 +1975,19 @@ function renderReview(){
 }
 
 /* ---------- allergen PDFs ---------- */
-let adFile=null,adBusy=false;
 const kb=n=>n>=1048576?(n/1048576).toFixed(1)+" MB":Math.max(1,Math.round(n/1024))+" KB";
-function setAdFile(f){
-  if(f&&!(f.type==="application/pdf"||/\.pdf$/i.test(f.name))){$("#adMsg").textContent="Choose a PDF file.";f=null}
-  adFile=f||null;$("#adDropText").textContent=adFile?adFile.name:"or drop one here";$("#adDrop").classList.toggle("has",!!adFile);
-  if(adFile&&!$("#adTitle").value.trim())$("#adTitle").value=adFile.name.replace(/\.pdf$/i,"");
-  if(adFile)$("#adMsg").textContent="";
-  $("#adSave").disabled=!adFile||adBusy;
-}
+// The allergen matrix is made on the spot from this site's menu items (allergenPdf). PDFs uploaded before that
+// change are still listed under it, with Open and Remove, until someone removes them.
 function renderAllergenDocs(){
   const box=$("#adList");box.replaceChildren();const ids=[];
+  const items=S.allergens,last=items.length?Math.max(...items.map(i=>i.at||0)):0;
+  box.append(el("div",{class:"pdfcard glass"},el("span",{class:"tile red"},svgi(ICON.doc)),
+    el("span",{class:"t"},el("b",{text:"Allergen matrix (PDF)"}),
+      el("span",{class:"s",text:items.length?`${items.length} menu item${items.length===1?"":"s"} × the 14 UK allergens${last?" · last changed "+new Date(last).toLocaleDateString("en-GB",{day:"numeric",month:"short"}):""}`:`Add the ${curSite().name}'s menu items below, then make the matrix.`})),
+    el("button",{class:"btn sm",type:"button",id:"amMake",disabled:!items.length||!S.db,onclick:allergenPdf},"Generate PDF")));
   const list=[...S.allergenDocs].sort((a,b)=>(b.at||0)-(a.at||0));
-  const upload=()=>{const w=$("#adUpWrap");w.hidden=false;w.open=true;w.scrollIntoView({behavior:"smooth",block:"start"})};
-  if(!list.length)box.append(el("div",{class:"pdfcard glass none"},el("span",{class:"tile grey"},svgi(ICON.doc)),el("span",{class:"t"},el("b",{text:"No allergen PDF yet"}),
-    el("span",{class:"s",text:`The ${curSite().name}'s allergen matrix, so staff can open it here.`})),ro()||!S.assets?null:el("button",{class:"btn sm",type:"button",onclick:upload},"Upload")));
-  list.forEach((d,i)=>{
+  if(list.length)box.append(el("div",{class:"label",text:"Uploaded earlier"}));
+  list.forEach(d=>{
     ids.push(d.by);
     const url="/_blob/"+d.assetId;
     let del=null;
@@ -1740,43 +2003,15 @@ function renderAllergenDocs(){
         }
       });
     }
-    box.append(el("div",{class:"pdfcard glass"+(i?" old":"")},
-      el("span",{class:"tile red"},svgi(ICON.doc)),
+    box.append(el("div",{class:"pdfcard glass old"},
+      el("span",{class:"tile grey"},svgi(ICON.doc)),
       el("span",{class:"t"},el("b",{text:d.title||d.fileName||"Allergen information"}),
-        el("span",{class:"s",text:[i===0?"Latest":"",d.size?kb(d.size):"",`${when(d.at)}, ${nameOf(d.by)}`].filter(Boolean).join(" · ")}),
+        el("span",{class:"s",text:[d.size?kb(d.size):"",`${when(d.at)}, ${nameOf(d.by)}`].filter(Boolean).join(" · ")}),
         d.note?el("span",{class:"s",text:d.note}):null),
-      el("a",{class:"btn sm"+(i?" ghost":""),href:url,target:"_blank",rel:"noopener"},"Open"),del));
+      el("a",{class:"btn ghost sm",href:url,target:"_blank",rel:"noopener"},"Open"),del));
   });
-  const can=!ro()&&!!S.assets;
-  $("#adUpload").hidden=!can;$("#adNoUpload").hidden=can||!S.db;
-  // With no PDF yet, the card's Upload button opens the form; afterwards it's a link under the PDFs.
-  const w=$("#adUpWrap");w.hidden=!S.db||(!list.length&&!w.open);
   resolveNames(ids);
 }
-async function uploadAllergenPdf(){
-  if(!adFile||!S.assets||ro()||adBusy)return;
-  if(adFile.size>20*1024*1024){$("#adMsg").textContent="That PDF is over 20 MB. Upload a smaller version.";return}
-  const site=S.site,file=adFile;adBusy=true;$("#adSave").disabled=true;$("#adMsg").textContent="Uploading…";
-  try{
-    const up=await S.assets.upload(file,{type:"application/pdf"});
-    const doc={title:$("#adTitle").value.trim()||file.name.replace(/\.pdf$/i,""),note:$("#adNote").value.trim(),fileName:file.name,assetId:up.id,size:up.sizeBytes||file.size,by:S.me,at:Date.now()};
-    // One stored file, listed at every ticked site. multiSave reports a failure itself, so no throw here.
-    const r=await multiSave("allergenDocs",adPick.get(),doc,{match:false});
-    if(!r){try{await S.assets.delete(up.id)}catch(_){}adBusy=false;$("#adSave").disabled=!adFile;$("#adMsg").textContent="Couldn't save the PDF. Try again.";return}
-    adBusy=false;$("#adTitle").value="";$("#adNote").value="";$("#adFile").value="";setAdFile(null);adPick.set([]);
-    $("#adMsg").textContent=`Uploaded to the ${r.done.join(", ")}.${r.warn}`;
-  }catch(e){
-    adBusy=false;const c=e&&e.code;
-    $("#adMsg").textContent=c==="too_large"?"That PDF is too large (20 MB limit).":c==="unsupported_type"?"That file couldn't be stored as a PDF. Try saving it as a PDF again.":c==="quota_or_state"?"The diary's file storage is full. Remove an old PDF and try again.":c==="rate_limited"?"Too many uploads just now. Wait a minute and try again.":c==="invalid_argument"?"You don't have permission to add files to this diary.":"Couldn't upload the PDF. Check your connection and try again.";
-    $("#adSave").disabled=!adFile;
-  }
-}
-$("#adFile").addEventListener("change",e=>setAdFile(e.target.files[0]));
-(()=>{const dz=$("#adDrop");
-  ["dragenter","dragover"].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add("over")}));
-  ["dragleave","drop"].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove("over")}));
-  dz.addEventListener("drop",e=>{const f=e.dataTransfer&&e.dataTransfer.files[0];if(f)setAdFile(f)});})();
-$("#adSave").addEventListener("click",uploadAllergenPdf);
 
 /* ---------- needs attention (per site) ---------- */
 function prevTradingDay(s,days){
@@ -1836,6 +2071,7 @@ const ICON={
 // Every section, in order. grp: where it lives (diary sections are tabs; records and manage are lists on phones).
 const NAV=[
   {id:"day",t:"Today",grp:"diary",ic:"today"},{id:"week",t:"This week",grp:"diary",ic:"week"},{id:"history",t:"Last 4 weeks",grp:"manage",ic:"history",sub:"Days complete, gaps and problems"},
+  {id:"inspect",t:"EHO inspection mode",grp:"manage",ic:"shield",tile:"green",sub:"Everything the inspector asks for, on screen or as a PDF"},
   {id:"extras",t:"Extra checks",grp:"records",ic:"extras",tile:"teal"},{id:"cleaning",t:"Cleaning",grp:"records",ic:"cleaning",tile:"blue"},
   {id:"prove",t:"Prove it",grp:"records",ic:"prove",tile:"orange"},{id:"allergens",t:"Allergens",grp:"records",ic:"allergens",tile:"red"},
   {id:"deliveries",t:"Deliveries",grp:"records",ic:"deliveries",tile:"indigo"},{id:"maintenance",t:"Maintenance",grp:"records",ic:"maintenance",tile:"purple"},
@@ -1891,7 +2127,7 @@ function hubSub(id){
       return next?`All up to date · next ${next.x.name}, ${nice(next.due)}`:`${n(xs.length,id==="cleaning"?"job":"check")}, all up to date`;
     }
     case "prove":{const r=[...S.prove].sort((a,b)=>(b.at||0)-(a.at||0))[0];return r?`Last: ${r.food}, ${r.pass?"pass":"fail"} · ${short(r.date)}`:"No checks recorded yet"}
-    case "allergens":return `${n(S.allergens.length,"menu item")} · ${S.allergenDocs.length?"PDF uploaded":"no PDF yet"}`;
+    case "allergens":return S.allergens.length?`${n(S.allergens.length,"menu item")} · allergen matrix PDF`:"No menu items yet";
     case "history":{let c=0,tr=0;for(let i=1;i<=28;i++){const d=addDays(t,-i),st=dayStatus(S.days[d]);if(isClosed(d)&&!st.any)continue;tr++;if(st.complete)c++}return `${c} of ${tr} days complete`}
     case "eho":{const l=inspSorted()[0];if(!l)return "No inspection recorded";const o=(l.issues||[]).filter(i=>!i.done).length;return `Rating ${l.rating??"–"} · ${o?n(o,"issue")+" open":"no open issues"}`}
     case "plans":{const due=S.plans.filter(d=>reviewState(d).overdue).length;return S.plans.length?`${n(S.plans.length,"document")}${due?` · ${due} due for review`:""}`:"None yet: start from a template"}
@@ -1919,8 +2155,8 @@ function renderNav(){
   const sn=$("#snav");sn.replaceChildren();
   const groups=[["diary",""],["records","Records"],["manage","Management"]];
   for(const[g,label]of groups){
-    const items=vis.filter(n=>n.grp===g||(g==="diary"&&n.id==="history"));
-    if(g==="manage")items.splice(0,items.length,...vis.filter(n=>n.grp==="manage"&&n.id!=="history"));
+    const items=vis.filter(n=>n.grp===g||(g==="diary"&&(n.id==="history"||n.id==="inspect")));
+    if(g==="manage")items.splice(0,items.length,...vis.filter(n=>n.grp==="manage"&&n.id!=="history"&&n.id!=="inspect"));
     if(!items.length)continue;
     if(label)sn.append(el("div",{class:"h",text:label}));
     for(const n of items){const b=navBadge(n.id);
@@ -1941,7 +2177,7 @@ function renderNav(){
   const rh=$("#recordsHub");rh.replaceChildren(...vis.filter(n=>n.grp==="records").map(n=>navRow(n,()=>show(n.id))));
   const mh=$("#moreHub");mh.replaceChildren();
   const mg=vis.filter(n=>n.grp==="manage");
-  if(mg.length){const hist=mg.filter(n=>n.id==="history"),rest=mg.filter(n=>n.id!=="history");
+  if(mg.length){const hist=mg.filter(n=>n.id==="history"||n.id==="inspect"),rest=mg.filter(n=>n.id!=="history"&&n.id!=="inspect");
     if(hist.length)mh.append(el("div",{class:"list glass"},...hist.map(n=>navRow(n,()=>show(n.id)))));
     if(rest.length)mh.append(el("div",{class:"label",text:"Management"}),el("div",{class:"list glass"},...rest.map(n=>navRow(n,()=>show(n.id)))));}
   mh.append(el("div",{class:"label",text:"Account"}),el("div",{class:"list glass"},...accountItems().map(([t,ic,tile,fn,danger])=>
@@ -2229,10 +2465,10 @@ $("#pubGo").addEventListener("click",async()=>{
   }catch(e){fail(e);pubNote="Publishing stopped part-way. Check each site's setup, then try again.";renderPublish()}
 });
 
-function renderAll(){refreshPickers();renderSites();renderNav();renderHead();renderAddBtn();renderDay();renderWeek();renderHistory();renderTasks("extras");renderTasks("cleaning");renderProve();renderDeliveries();renderMaint();renderAllergenDocs();renderAllergens();renderPlansList();renderSuppliers();renderContacts();renderStaff();renderOnbList();renderInspList();renderReview();renderSetup()}
+function renderAll(){refreshPickers();renderSites();renderNav();renderHead();renderAddBtn();renderDay();renderWeek();renderHistory();renderTasks("extras");renderTasks("cleaning");renderProve();renderDeliveries();renderMaint();renderAllergenDocs();renderAllergens();renderPlansList();renderSuppliers();renderContacts();renderStaff();renderOnbList();renderInspList();renderReview();renderSetup();renderInspect()}
 
 /* ---------- tabs ---------- */
-const TABS=["day","week","history","extras","cleaning","prove","allergens","deliveries","maintenance","eho","plans","suppliers","contacts","staff","onboarding","review","setup","records","more"];
+const TABS=["day","week","history","inspect","extras","cleaning","prove","allergens","deliveries","maintenance","eho","plans","suppliers","contacts","staff","onboarding","review","setup","records","more"];
 function show(tab,opts){
   if(!TABS.includes(tab))tab="day";
   if(!canTab(tab)){if(S.role==="staff"&&MANAGER_TABS.has(tab)&&!(opts&&opts.quiet))toast("That section is for managers.");tab="day"}
@@ -2242,6 +2478,7 @@ function show(tab,opts){
   if(changed)for(const n of[document.querySelector(`[data-panel="${tab}"]`),$("#pagehead")])if(n){n.classList.remove("enter");void n.offsetWidth;n.classList.add("enter")}
   $("#dayCtl").hidden=tab!=="day";$("#weekCtl").hidden=tab!=="week";updFab();
   renderHead();renderNav();renderAddBtn();
+  if(tab==="inspect")renderInspect();
   if(changed&&!(opts&&opts.keepScroll))window.scrollTo({top:0});
   try{localStorage.setItem("sfbb.tab",tab)}catch(e){}
 }
@@ -2265,17 +2502,16 @@ show((()=>{const h=location.hash.slice(1);if(TABS.includes(h))return h;try{const
 function switchSite(id){
   if(id===S.site)return;
   if((S.plan&&S.plan.dirty)||(S.insp&&S.insp.dirty)||(S.onb&&S.onb.dirty)||setupDirty){toast("Save or discard your changes before switching site.");return}
-  if(adBusy){toast("Wait for the upload to finish before switching site.");return}
   if(S.plan)closePlan();if(S.insp)closeInsp();if(S.onb)closeOnb();
   S.site=id;try{localStorage.setItem("sfbb.site",id)}catch(e){}
   Object.assign(S,{days:{},weeks:{},allergens:[],allergenDocs:[],reviews:[],extras:[],cleaning:[],deliveries:[],maintenance:[],suppliers:[],contacts:[],plans:[],onboarding:[],inspections:[],staff:[],prove:[],rev:{}});
   S.settings=S.sum[id]&&S.sum[id].ready?S.sum[id].settings:normSettings(null);S.cfg=activeCfg(S.settings);
   SE=null;setupDirty=false;pubNote="";$("#setupMsg").textContent="";
   editTask("extras",null);editTask("cleaning",null);editMaint(null);resetDelivery();editSupplier(null);editContact(null);editStaff(null);editAlg(null);
-  setAdFile(null);
-  for(const x of["#problems","#wkNotes","#revNotes","#adTitle","#adNote"])$(x).value="";
+  IN.key="";IN.data=null;IN.loading=null;
+  for(const x of["#problems","#wkNotes","#revNotes"])$(x).value="";
   editStaff(null);
-  for(const x of["#adMsg","#pMsg","#algConfirm","#tMsg","#revMsg","#pubMsg"])$(x).textContent="";
+  for(const x of["#pMsg","#algConfirm","#tMsg","#revMsg","#pubMsg","#inMsg"])$(x).textContent="";
   fillProve();applyTabs();renderAll();
   if(S.db)subscribeSite();
   window.scrollTo({top:0});
@@ -2348,7 +2584,7 @@ $("#revSave").addEventListener("click",async()=>{
 document.querySelectorAll(".note.intro").forEach(n=>{n.setAttribute("title","Tap to read more");n.addEventListener("click",()=>n.classList.toggle("full"))});
 
 /* ---------- boot ---------- */
-buildAlgChecks();buildTaskForm("extras");buildTaskForm("cleaning");proveForm();delivForm();maintForm();supForm();conForm();staffForm();editStaff(null);
+inspectForm();buildAlgChecks();buildTaskForm("extras");buildTaskForm("cleaning");proveForm();delivForm();maintForm();supForm();conForm();staffForm();editStaff(null);
 applyTabs();renderAll();
 (async()=>{
   const[db,user,assets]=await Promise.all([window.claude?.use?.("db"),window.claude?.use?.("user"),window.claude?.use?.("assets")]);

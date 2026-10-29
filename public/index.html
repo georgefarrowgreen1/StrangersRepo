@@ -164,6 +164,22 @@
   </div>
 
   <!-- PROVE IT -->
+  <!-- EHO INSPECTION MODE -->
+  <div data-panel="inspect" class="stack" hidden>
+    <section class="panel" id="inRange">
+      <h2>Which period does the inspector want to see?</h2>
+      <div class="methods" id="inChips" role="radiogroup" aria-label="Period"></div>
+      <div class="fields" id="inCustom" hidden>
+        <div class="field"><label class="label" for="inFrom">From</label><input type="date" id="inFrom"></div>
+        <div class="field"><label class="label" for="inTo">To</label><input type="date" id="inTo"></div>
+      </div>
+      <p class="by" id="inSub"></p>
+      <div class="row"><button class="btn" id="inPdf" disabled>Export PDF</button><span class="by" id="inMsg" role="status"></span></div>
+    </section>
+    <div class="chiprow injump" id="inJump" aria-label="Jump to a section"></div>
+    <div class="stack" id="inReport"></div>
+  </div>
+
   <!-- DELIVERIES -->
   <div data-panel="deliveries" class="stack" hidden>
     <section class="panel" id="dvFormPanel">
@@ -243,24 +259,6 @@
       <div class="row"><button class="btn" id="algSave">Save item</button><button class="btn ghost" id="algCancel" hidden>Cancel edit</button><button class="btn ghost danger" id="algDelete" hidden>Remove item</button><span class="by" id="algConfirm"></span></div>
     </section>
     <div class="stack tight" id="adList"></div>
-    <details class="panel adup" id="adUpWrap">
-      <summary>Upload a new allergen PDF</summary>
-      <p class="note">This site's allergen matrix or menu allergen sheet, so staff can open it here. The item list below is kept separately.</p>
-      <div id="adUpload" class="stack" style="gap:10px">
-        <div class="drop" id="adDrop">
-          <span class="pick">Choose a PDF</span><strong id="adDropText">or drop one here</strong>
-          <span class="by">PDF only, up to 20 MB</span>
-          <input type="file" id="adFile" accept="application/pdf,.pdf">
-        </div>
-        <div class="fields">
-          <div class="field"><label class="label" for="adTitle">Title</label><input type="text" id="adTitle" placeholder="e.g. Autumn menu allergen matrix"></div>
-          <div class="field"><label class="label" for="adNote">Note (optional)</label><input type="text" id="adNote" placeholder="e.g. Replaces the summer sheet"></div>
-        </div>
-        <div id="adSites"></div>
-        <div class="row"><button class="btn" id="adSave" disabled>Upload PDF</button><span class="by" id="adMsg" role="status"></span></div>
-      </div>
-      <p class="note" id="adNoUpload" hidden>Uploading PDFs needs edit access to this diary. You can still open the PDFs above.</p>
-    </details>
     <div class="search"><input type="search" id="algSearch" placeholder="Search menu items" aria-label="Search menu items"></div>
     <div class="chiprow" id="algFilter" aria-label="Show items free from"></div>
     <div class="list glass" id="algList"></div>
@@ -423,6 +421,7 @@
 
 <script src="/claude-shim.js"></script>
 <script src="/pinpad.js"></script>
+<script src="/pdf.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

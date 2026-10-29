@@ -1,9 +1,11 @@
-# Runs every test on each push and pull request, so a change that breaks the diary shows a red cross
-# on GitHub before it's merged into main (which Cloudflare deploys).
+# Runs every test on each pull request and after each merge to main, so a change that breaks the diary
+# shows a red cross on GitHub before it reaches main (which Cloudflare deploys).
 name: Tests
 
+# Pull requests are tested once (their own run); main is tested again after each merge.
 on:
   push:
+    branches: [main]
   pull_request:
 
 concurrency:
@@ -21,9 +23,15 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # On failure, the failing test's message is also posted as an annotation on the check, so it can be read
+      # without opening the full log.
       - name: Typecheck and API tests
-        run: npm test
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee test.log || { node .github/annotate.mjs "API tests failed" test.log; exit 1; }
       - name: Install a browser for the site test
         run: npm install --no-save playwright@1.63.0 && npx playwright install --with-deps chromium
       - name: Site test in a browser
-        run: npm run test:e2e
+        run: |
+          set -o pipefail
+          npm run test:e2e 2>&1 | tee e2e.log || { node .github/annotate.mjs "Browser test failed" e2e.log; exit 1; }

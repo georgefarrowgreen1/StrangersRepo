@@ -82,7 +82,7 @@ The page writes these with nested `update`s such as `{temps:{u1:{am:{v:3.2,by,at
 
 **`allergens/<id>`**: `name, source, contains:[allergen names], notes, by, at, importedFrom?`
 
-**`allergenDocs/<id>`**: `title, note, fileName, assetId, size, by, at`. `assetId` is the PDF's key in the KV namespace (`FILES`), served at `/_blob/<assetId>`.
+**`allergenDocs/<id>`**: `title, note, fileName, assetId, size, by, at`. `assetId` is the PDF's key in the KV namespace (`FILES`), served at `/_blob/<assetId>`. No longer uploaded: the allergen matrix PDF is generated on the device from `allergens`. PDFs uploaded before are still listed (Open, Remove) until removed.
 
 **`suppliers/<id>`**: `name, supplies, contact, phone, email, address, rating, notes, by, at`
 
