@@ -156,6 +156,38 @@ test("staff journey on the real page", async () => {
   assert.equal(jobSet.data.lastBy, "web:Sam Patel");
   await page.locator("#kList .xrow", { hasText: "Clean coffee machine" }).locator(".pill.bad").waitFor();
 
+  // Delete the hand-entered entry: the last-done date goes back to the tick before it, and Undo restores it.
+  const jobRow = page.locator("#kList .xrow", { hasText: "Clean coffee machine" });
+  if (!(await jobRow.locator(".hist").isVisible())) await jobRow.locator(".xmain").click();
+  const firstDel = jobRow.locator(".hist li").first().locator(".btn.danger");
+  await firstDel.click(); await firstDel.click();
+  await assert.doesNotReject(waitFor(async () => (await api("get", { path: "sites/cafe/cleaning/job1" })).data.log.length === 1), "entry deleted");
+  const jobDel = (await api("get", { path: "sites/cafe/cleaning/job1" })).data;
+  assert.equal(jobDel.lastAt, jobDel.log[0].at, "last done goes back to the remaining entry");
+  assert.equal(jobDel.lastSet, false);
+  await page.locator("#toast button", { hasText: "Undo" }).click();
+  await assert.doesNotReject(waitFor(async () => (await api("get", { path: "sites/cafe/cleaning/job1" })).data.lastSet === true), "Undo brings it back");
+
+  // Prove it: Undo straight after saving, and Delete this record (then Undo) from a record's details.
+  await openSection(page, "prove");
+  const proveOnce = async (food) => {
+    await page.fill("#pFood", food); await page.fill("#pReading", "80"); await page.click("#pSave");
+    await page.locator("#pList .xrow", { hasText: food }).waitFor();
+  };
+  await proveOnce("Typo toastie");
+  await page.locator("#toast button", { hasText: "Undo" }).click();
+  await page.locator("#pList .xrow", { hasText: "Typo toastie" }).waitFor({ state: "detached" });
+  await proveOnce("Cheese toastie");
+  const pRow = page.locator("#pList .xrow", { hasText: "Cheese toastie" });
+  await pRow.locator(".xmain").click();
+  const pDel = pRow.locator(".btn", { hasText: "Delete this record" });
+  await pDel.click(); await page.locator("#pList .btn", { hasText: "Tap again to remove" }).click();
+  await page.locator("#pList .xrow", { hasText: "Cheese toastie" }).waitFor({ state: "detached" });
+  await page.locator("#toast button", { hasText: "Undo" }).click();
+  await page.locator("#pList .xrow", { hasText: "Cheese toastie" }).waitFor();
+  assert.equal((await api("query", { path: "sites/cafe/proveit" })).docs.filter((d) => /toastie/.test(d.data.food)).length, 1);
+  await openSection(page, "cleaning");
+
   // Add an allergen item from the Add button.
   await openSection(page, "allergens");
   assert.equal(await page.locator("#algFormPanel").isHidden(), true, "form closed until Add");

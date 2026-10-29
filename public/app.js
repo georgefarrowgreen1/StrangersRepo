@@ -75,7 +75,7 @@ const lastWhen=(ts,set)=>!ts?"":set?new Date(ts).toLocaleDateString("en-GB",{day
 function toast(m,action){
   const t=$("#toast");t.hidden=true;void t.offsetWidth;
   t.replaceChildren(el("span",{text:m}),action?el("button",{type:"button",onclick:()=>{t.hidden=true;action[1]()}},action[0]):"");
-  t.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(()=>t.hidden=true,action?5000:2400);
+  t.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(()=>t.hidden=true,action?7000:2400);
 }
 
 const S={site:(()=>{try{const s=localStorage.getItem("sfbb.site");return SITES.some(x=>x.id===s)?s:"roastery"}catch(e){return"roastery"}})(),
@@ -589,10 +589,13 @@ function renderTasks(kind){
     for(const{t,st}of g){
       if(t.lastBy)ids.push(t.lastBy);
       const note=el("input",{type:"text",placeholder:"Note (optional)",disabled:R,"aria-label":"Note for "+t.name});
-      const hist=(t.log||[]).slice(0,5).map(e=>el("li",{},el("span",{text:lastWhen(e.at,e.set)}),el("span",{class:"s",text:nameOf(e.by)+(e.note?" · "+e.note:"")})));
+      const hist=(t.log||[]).slice(0,10).map((e,i)=>{
+        let del=null;
+        if(!R){del=el("button",{class:"btn ghost sm danger",type:"button","aria-label":`Delete the entry for ${lastWhen(e.at,e.set)}`},"Delete");armDelete(del,"Delete",()=>deleteTaskEntry(kind,t,S.site,i))}
+        return el("li",{},el("span",{text:lastWhen(e.at,e.set)}),el("span",{class:"s",text:nameOf(e.by)+(e.note?" · "+e.note:"")}),del)});
       const dateId=`${kind}_last_${t.id}`;
       const dateIn=el("input",{type:"date",id:dateId,max:iso(new Date()),value:t.lastAt?iso(new Date(t.lastAt)):""});
-      for(const e of(t.log||[]).slice(0,5))ids.push(e.by);
+      for(const e of(t.log||[]).slice(0,10))ids.push(e.by);
       list.append(xrow(kind+t.id,{
         title:t.name,
         sub:[(t.freq||"").replace(/^./,c=>c.toUpperCase()),t.who,t.lastAt?`last ${lastWhen(t.lastAt,t.lastSet)}, ${nameOf(t.lastBy)}`:"never done"].filter(Boolean).join(" · "),
@@ -620,6 +623,16 @@ async function completeTask(kind,t,site,note){
     toast(`${t.name}: done${site!==S.site?" at "+siteOf(site).name:""}`,["Undo",()=>save(()=>D(kind,t.id,site).update(before))]);
 }
 
+// Delete one entry from a task's history (ticked by mistake, or the wrong date). If it was the latest, the
+// task's last-done date goes back to the entry before it, so the next due date is worked out from that.
+async function deleteTaskEntry(kind,t,site,i){
+  const log=[...(t.log||[])],[gone]=log.splice(i,1);if(!gone)return;
+  const before={lastAt:t.lastAt||null,lastBy:t.lastBy||null,lastSet:!!t.lastSet,log:t.log||[]};
+  const patch={log};
+  if(t.lastAt===gone.at||!log.length){const prev=log[0];patch.lastAt=prev?prev.at:null;patch.lastBy=prev?prev.by:null;patch.lastSet=!!(prev&&prev.set)}
+  if(await save(()=>D(kind,t.id,site).update(patch)))
+    toast(`${t.name}: entry for ${lastWhen(gone.at,gone.set)} deleted`,["Undo",()=>save(()=>D(kind,t.id,site).update(before))]);
+}
 // Set the date a task was last carried out by hand, e.g. when it was done but not ticked off at the time.
 // Stored at midday on that date (now, if it's today) and marked lastSet so it shows without a time.
 async function setTaskDate(kind,t,site,value){
@@ -672,12 +685,16 @@ function proveForm(){
     const pass=proveResult(m,v,$("#pManual").value);
     if(pass===false&&!$("#pAction").value.trim()){$("#pMsg").textContent="It failed: write what you did about it before saving.";$("#pAction").focus();return}
     const rec={date:$("#pDate").value||today(),method:m,food,reading:v,unit:PROVE[m].unit||"°C",pass,action:$("#pAction").value.trim(),by:S.me,at:Date.now()};
-    if(await save(()=>C("proveit").add(rec))){
-      $("#pMsg").textContent="";toast(pass?`Saved: ${food} passed`:`Saved: ${food} failed, action recorded`);
+    let ref=null;
+    if(await save(async()=>{ref=await C("proveit").add(rec)})){
+      const site=S.site;
+      $("#pMsg").textContent="";toast(pass?`Saved: ${food} passed`:`Saved: ${food} failed, action recorded`,ref&&ref.id?["Undo",async()=>{if(await save(()=>D("proveit",ref.id,site).delete()))toast("Record removed")}]:null);
       $("#pFood").value="";$("#pReading").value="";$("#pAction").value="";proveLive();
     }
   });
 }
+// A record as loaded (with its id) back into the shape that's saved, for Undo after a delete.
+const storableRec=r=>{const o={...r};delete o.id;return o};
 function renderProve(){
   const box=$("#pList");box.replaceChildren();const ids=[];
   const recs=[...S.prove].sort((a,b)=>(b.date||"").localeCompare(a.date||"")||(b.at||0)-(a.at||0));
@@ -687,7 +704,7 @@ function renderProve(){
   for(const r of recs.slice(0,200)){
     ids.push(r.by);
     const rule=PROVE[r.method]||{label:r.method};
-    let del=null;if(!ro()){del=el("button",{class:"btn ghost sm danger",type:"button"},"Remove record");armDelete(del,"Remove record",()=>save(()=>D("proveit",r.id).delete()))}
+    let del=null;if(!ro()){del=el("button",{class:"btn ghost sm danger",type:"button"},"Delete this record");armDelete(del,"Delete this record",async()=>{if(await save(()=>D("proveit",r.id).delete()))toast(`Deleted: ${r.food}, ${short(r.date)}`,["Undo",()=>save(()=>D("proveit",r.id).set(storableRec(r)))])})}
     box.append(xrow("p"+r.id,{
       title:r.food,sub:`${rule.label} · ${short(r.date)}`,
       right:[el("span",{class:"res",text:r.reading==null?"":`${r.reading}${r.unit==="min"?" min":"°"}`}),el("span",{class:"pill "+(r.pass?"ok":"bad"),text:r.pass?"Pass":"Fail"})],
