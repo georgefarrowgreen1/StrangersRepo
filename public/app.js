@@ -724,8 +724,10 @@ function dlvTempState(kind,v){
 }
 const DV={supplier:"",other:false,packaging:"",order:""};
 function delivForm(){
+  // The saved value is always "ok" (fine) or "no" (a problem). "Any damage to packaging?" is asked the other way
+  // round, so its Yes records a problem.
   const yn=(key,box)=>{box.replaceChildren();
-    for(const[v,l]of[["ok","Yes"],["no","No"]]){const b=el("button",{type:"button","aria-pressed":String(DV[key]===v),onclick:()=>{DV[key]=v;yn(key,box);dlvVerdict()}},l);box.append(b)}};
+    for(const[v,l]of key==="packaging"?[["no","Yes"],["ok","No"]]:[["ok","Yes"],["no","No"]]){const b=el("button",{type:"button","aria-pressed":String(DV[key]===v),onclick:()=>{DV[key]=v;yn(key,box);dlvVerdict()}},l);box.append(b)}};
   yn("packaging",$("#dvPack"));yn("order",$("#dvOrder"));
   for(const k of["chilled","frozen"])$("#dv_"+k).addEventListener("input",dlvVerdict);
   $("#dvNoTemp").addEventListener("change",()=>{for(const k of["chilled","frozen"]){$("#dv_"+k).disabled=$("#dvNoTemp").checked;if($("#dvNoTemp").checked)$("#dv_"+k).value=""}dlvVerdict()});
@@ -770,7 +772,7 @@ async function saveDelivery(outcome){
   const num=k=>{const v=$("#dv_"+k).value;return v===""?null:Number(v)};
   const chilled=num("chilled"),frozen=num("frozen"),noTemp=$("#dvNoTemp").checked;
   if(!noTemp&&chilled==null&&frozen==null){msg.textContent="Enter the chilled or frozen temperature, or tick “No chilled or frozen food”.";return}
-  if(!DV.packaging||!DV.order){msg.textContent="Answer both checks: packaging and what you ordered.";return}
+  if(!DV.packaging||!DV.order){msg.textContent="Answer both questions: damage to packaging, and whether it's what you ordered.";return}
   const note=$("#dvNote").value.trim(),p=dlvProblems();
   if(outcome==="rejected"&&!note){msg.textContent="Write why it was rejected and what happens next.";$("#dvNote").focus();return}
   if(outcome==="accepted"&&p.length&&!note){msg.textContent=`Something failed (${p.join(", ")}). Reject it, or write why you accepted it.`;$("#dvNote").focus();return}
