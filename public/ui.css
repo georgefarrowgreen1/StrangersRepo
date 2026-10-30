@@ -496,3 +496,14 @@ table.rk-grid .rk-corner{font-size:10px;width:40px}
 .row.assign select{flex:1 1 180px;width:auto;max-width:280px}
 /* Staff training: new accounts to add */
 #tImpList label .s{color:var(--muted);font-size:13px}
+
+/* Temperature log */
+.tlpills{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end;max-width:62%}
+.tlpills .pill{white-space:nowrap}
+.tlunit{display:grid;grid-template-columns:minmax(0,1fr) 120px;gap:4px 12px;align-items:center;padding:8px 10px;border-radius:12px;background:var(--sunk)}
+.tlunit.bad{background:var(--bad-bg)} .tlunit.warn{background:var(--warn-bg)}
+.tlunit .n{margin:0;font-size:15px}
+.tlunit .n .s{color:var(--muted);font-size:13px;font-weight:500}
+.tlunit input{width:100%;text-align:right;font-variant-numeric:tabular-nums}
+.tlunit .tlh{grid-column:1/-1;white-space:pre-line;color:var(--muted);font-size:12.5px}
+#tlChips{margin:0}

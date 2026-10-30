@@ -53,7 +53,7 @@ const SITES=[
   {id:"asg",name:"ASG",addr:"14 All Saints Green, Norwich, NR1 3NA"},
   {id:"factory",name:"Factory",addr:"122 Ber Street, Norwich, NR1 3ES"}];
 const siteOf=id=>SITES.find(s=>s.id===id)||SITES[0];
-const OPT_TABS=[["week","End of week"],["extras","Extra checks"],["cleaning","Cleaning schedule"],["prove","Prove it"],["allergens","Allergens"],["deliveries","Deliveries"],["maintenance","Maintenance"],["eho","Last EHO inspection report"],["plans","HACCP & risk"],["suppliers","Suppliers"],["contacts","Contacts"],["staff","Staff training"],["onboarding","Onboarding"],["review","4-weekly review"]];
+const OPT_TABS=[["week","End of week"],["extras","Extra checks"],["cleaning","Cleaning schedule"],["prove","Prove it"],["allergens","Allergens"],["templog","Temperature log"],["deliveries","Deliveries"],["maintenance","Maintenance"],["eho","Last EHO inspection report"],["plans","HACCP & risk"],["suppliers","Suppliers"],["contacts","Contacts"],["staff","Staff training"],["onboarding","Onboarding"],["review","4-weekly review"]];
 const WEEKDAYS=[[1,"Monday"],[2,"Tuesday"],[3,"Wednesday"],[4,"Thursday"],[5,"Friday"],[6,"Saturday"],[0,"Sunday"]];
 const LISTS=[["opening","Opening"],["closing","Closing"],["weekly","End-of-week"]];
 
@@ -711,6 +711,86 @@ function renderProve(){
       details:[xfacts([["Action",r.action],["Recorded by",nameOf(r.by)+(r.at?", "+when(r.at):"")],["Rule",rule.hint]]),del?el("div",{class:"row"},del):null]}));
   }
   $("#pFormPanel").hidden=ro();
+  resolveNames(ids);
+}
+
+/* ---------- temperature log ----------
+   Every fridge and freezer reading at this site, a day per row, newest first. Open a day to add a missed reading
+   or amend one: the reading's first value is kept as `was` (with who took it and when), and the amendment is
+   stamped with who changed it, when, and why. Removing a reading keeps it the same way (v: null). */
+const TL_RANGES=[["7","Last 7 days"],["28","Last 4 weeks"],["91","Last 3 months"],["365","Last 12 months"]];
+let TL={range:(()=>{try{return localStorage.getItem("sfbb.tlRange")||"28"}catch(e){return"28"}})(),edit:{}};
+const tlReading=(d,u)=>d&&d.temps&&d.temps[u.id]&&d.temps[u.id].am||null;
+function tempLogForm(){
+  const box=$("#tlChips");
+  for(const[k,l]of TL_RANGES)box.append(el("button",{type:"button",role:"radio","data-r":k,onclick:()=>{TL.range=k;try{localStorage.setItem("sfbb.tlRange",k)}catch(e){}renderTempLog()}},l));
+}
+async function saveReading(date,u,raw,note){
+  const d=S.days[date],r=tlReading(d,u);
+  const v=raw===""?null:Math.round(Number(raw)*10)/10;
+  if(raw!==""&&!isFinite(v)){toast("Enter a number, like 3.5 or -19");return false}
+  if(r&&r.v===v)return true;
+  if(!r&&v==null)return true;
+  const amend=!!(r&&r.v!=null)&&(date!==today()||note);
+  const am={v,...stamp(),note:note||""};
+  if(r&&r.v!=null&&!r.was)am.was={v:r.v,by:r.by,at:r.at};
+  if(amend||r&&r.was)am.amended=true;
+  if((!r||r.v==null)&&!r?.was&&date!==today())am.late=true;
+  return await save(()=>patchDay(date,{temps:{[u.id]:{am}}}));
+}
+function renderTempLog(){
+  const box=$("#tlList");if(!box||S.tab!=="templog")return;
+  for(const b of document.querySelectorAll("#tlChips button")){const on=b.dataset.r===TL.range;b.classList.toggle("on",on);b.setAttribute("aria-checked",String(on))}
+  const units=S.settings.units,R=ro(),t=today(),ids=[];
+  box.replaceChildren();
+  if(!units.length){box.append(el("div",{class:"empty glass",text:`No fridges or freezers are set up at the ${curSite().name}.${canTab("setup")?" Add them in Setup.":""}`}));$("#tlStats").replaceChildren();return}
+  const from=addDays(t,-(Number(TL.range)-1)),start=hardStart()||"";
+  let readings=0,out=0,missing=0;
+  const list=el("div",{class:"list glass"});
+  for(let date=t;date>=from;date=addDays(date,-1)){
+    if(start&&date<start)break;
+    if(diaryStart()&&date<diaryStart()&&!S.days[date])continue;
+    const d=S.days[date],closed=isClosed(date)&&!(d&&dayStatus(d,null,date).any);
+    const cells=units.map(u=>{const r=tlReading(d,u),v=r&&r.v!=null?Number(r.v):null;
+      if(v!=null){readings++;if(tempState(u.kind,v)==="bad")out++}else if(!closed&&date<t)missing++;
+      if(r){ids.push(r.by);if(r.was)ids.push(r.was.by)}
+      return{u,r,v,c:v==null?"":tempState(u.kind,v)}});
+    if(closed&&!cells.some(c=>c.r))continue;
+    const pills=cells.map(c=>el("span",{class:"pill "+(c.v==null?(date<t&&!closed?"bad":""):c.c==="ok"?"ok":c.c),title:c.u.name},`${c.u.name}: ${c.v==null?"–":c.v+"°"}${c.r&&(c.r.was||c.r.amended||c.r.late)?" ✎":""}`));
+    const details=[];
+    for(const c of cells){
+      const id=`tl_${date}_${c.u.id}`;
+      const inp=el("input",{type:"number",step:"0.1",inputmode:"decimal",id,value:c.v==null?"":String(c.v),placeholder:"°C",disabled:R,"aria-label":`${c.u.name} on ${nice(date)}, °C`});
+      const hist=[];
+      if(c.r&&c.r.v!=null)hist.push(`${c.r.amended||c.r.was?"Changed":c.r.late?"Added later":"Taken"} ${when(c.r.at)}, ${fullName(c.r.by)}${c.r.note?" · "+c.r.note:""}`);
+      if(c.r&&c.r.v==null&&c.r.was)hist.push(`Removed ${when(c.r.at)}, ${fullName(c.r.by)}${c.r.note?" · "+c.r.note:""}`);
+      if(c.r&&c.r.was)hist.push(`First recorded as ${c.r.was.v}°C, ${when(c.r.was.at)}, ${fullName(c.r.was.by)}`);
+      details.push(el("div",{class:"tlunit "+(c.c||"")},
+        el("label",{class:"n",for:id},el("b",{text:c.u.name}),el("span",{class:"s",text:c.u.kind==="freezer"?" · −18°C or colder":" · 5°C or below"})),
+        el("span",{class:"v"},inp),
+        hist.length?el("div",{class:"s tlh",text:hist.join("\n")}):null));
+    }
+    if(!R){
+      const note=el("input",{type:"text",placeholder:"Reason for the change (e.g. misread, probe recalibrated)","aria-label":`Reason for changing ${nice(date)}`});
+      const saveBtn=el("button",{class:"btn sm",type:"button",onclick:async()=>{
+        let ok=true,changed=0;
+        for(const c of cells){const raw=$(`#tl_${date}_${c.u.id}`).value.trim();const before=c.v==null?"":String(c.v);
+          if(raw===before)continue;
+          if(c.v!=null&&date!==today()&&!note.value.trim()){toast("Say why the reading is being changed");note.focus();return}
+          changed++;ok=(await saveReading(date,c.u,raw,note.value.trim()))&&ok}
+        if(!changed){toast("Nothing changed");return}
+        if(ok){toast(`${nice(date)}: readings saved`);const bad=cells.some(c=>{const raw=$(`#tl_${date}_${c.u.id}`).value.trim();return raw!==""&&tempState(c.u.kind,Number(raw))==="bad"});
+          if(bad)toast(`${nice(date)}: a reading is out of range. Write what you did in Problems & changes.`,["Open the day",()=>goDay(date)])}
+      }},"Save changes");
+      details.push(el("div",{class:"row"},note,saveBtn,el("button",{class:"btn ghost sm",type:"button",onclick:()=>goDay(date)},"Open the day")));
+    }
+    const amended=cells.some(c=>c.r&&(c.r.was||c.r.amended||c.r.late));
+    list.append(xrow("tl"+date,{title:date===t?"Today":nice(date),sub:closed?"Closed":amended?"Includes a changed or late reading":"",right:[el("span",{class:"tlpills"},...pills)],details}));
+  }
+  if(!list.children.length)box.append(el("div",{class:"empty glass",text:"No days in this period."}));else box.append(list);
+  const stat=(n,l,c)=>el("div",{class:"stat glass"},el("b",{class:c||"",text:n}),el("span",{text:l}));
+  $("#tlStats").replaceChildren(stat(String(readings),"readings"),stat(String(out),"out of range",out?"bad":"ok"),stat(String(missing),"missed",missing?"warn":"ok"));
+  $("#tlKey").textContent=units.map(u=>`${u.name}: ${u.kind==="freezer"?"−18°C or colder":"5°C or below (8°C legal maximum)"}`).join(" · ");
   resolveNames(ids);
 }
 
@@ -1900,7 +1980,8 @@ function inspectSections(R){
       part(st.cN,st.cT,d.closing&&d.closing.by),
       d.signed?{t:d.signed.name||fullName(d.signed.by),cls:"ok"}:{t:"Not signed",cls:"bad"},
       d.problems&&d.problems.text?d.problems.text:""]);
-    if(units.length)tempRows.push([pdfDate(date),...units.map(u=>{const v=tval(d,u);return v==null?{t:"–",cls:"muted"}:{t:v+"°C",cls:tempState(u.kind,v)==="bad"?"bad":tempState(u.kind,v)==="warn"?"warn":""}})]);
+    if(units.length)tempRows.push([pdfDate(date),...units.map(u=>{const v=tval(d,u),rr=tlReading(d,u),ch=rr&&(rr.was||rr.amended||rr.late)?" *":"";
+      return v==null?{t:"–"+(rr&&rr.was?" *":""),cls:"muted"}:{t:v+"°C"+ch,cls:tempState(u.kind,v)==="bad"?"bad":tempState(u.kind,v)==="warn"?"warn":""}})]);
     for(const x of temps.filter(x=>x.c==="bad"))actions.push({date,area:"Temperature",what:`${x.u.name} read ${x.v}°C (${x.u.kind==="freezer"?"should be −18°C or below":"should be 5°C or below"})`,
       did:d.problems&&d.problems.text?d.problems.text:{t:"No action noted",cls:"bad"},by:d.problems?fullName(d.problems.by):""});
     if(d.problems&&d.problems.text&&!temps.some(x=>x.c==="bad"))actions.push({date,area:"Daily diary",what:"Problem or change noted",did:d.problems.text,by:fullName(d.problems.by)});
@@ -1948,7 +2029,7 @@ function inspectSections(R){
     empty:""});
   out.push({id:"daily",title:"Daily diary",intro:`Opening checks, temperatures, closing checks and sign-off for each day the ${site.name} was open.`,
     cols:[{l:"Date",w:80},{l:"Opening checks",w:120},{l:"Temperatures",flex:1.2},{l:"Closing checks",w:120},{l:"Signed off by",w:100},{l:"Problems & changes",flex:1.5}],rows:dayRows,empty:"No days in this period."});
-  if(units.length)out.push({id:"temps",title:"Temperature log",intro:"Fridges 5°C or below (8°C legal maximum). Freezers −18°C or below.",
+  if(units.length)out.push({id:"temps",title:"Temperature log",intro:"Fridges 5°C or below (8°C legal maximum). Freezers −18°C or below. * added later, or changed: the original reading, who changed it and why are kept in Records → Temperature log.",
     cols:[{l:"Date",w:80},...units.map(u=>({l:u.name,flex:1,align:"center"}))],rows:tempRows,empty:"No readings in this period."});
   out.push({id:"actions",title:"Corrective actions",intro:"Problems found and what was done about them: diary notes, temperatures out of range, failed Prove it checks, deliveries, maintenance and inspection issues.",
     cols:[{l:"Date",w:80},{l:"Area",w:80},{l:"What happened",flex:1.2},{l:"What was done",flex:1.5},{l:"By",w:90}],
@@ -2211,6 +2292,7 @@ const NAV=[
   {id:"inspect",t:"EHO inspection mode",grp:"manage",ic:"shield",tile:"green",sub:"Everything the inspector asks for, on screen or as a PDF"},
   {id:"extras",t:"Extra checks",grp:"records",ic:"extras",tile:"teal"},{id:"cleaning",t:"Cleaning",grp:"records",ic:"cleaning",tile:"blue"},
   {id:"prove",t:"Prove it",grp:"records",ic:"prove",tile:"orange"},{id:"allergens",t:"Allergens",grp:"records",ic:"allergens",tile:"red"},
+  {id:"templog",t:"Temperature log",grp:"records",ic:"prove",tile:"blue"},
   {id:"deliveries",t:"Deliveries",grp:"records",ic:"deliveries",tile:"indigo"},{id:"maintenance",t:"Maintenance",grp:"records",ic:"maintenance",tile:"purple"},
   {id:"eho",t:"Last EHO inspection report",grp:"manage",ic:"eho",tile:"green"},{id:"plans",t:"HACCP & risk",grp:"manage",ic:"plans",tile:"purple"},
   {id:"suppliers",t:"Suppliers",grp:"manage",ic:"suppliers",tile:"orange"},{id:"contacts",t:"Contacts",grp:"manage",ic:"contacts",tile:"green"},
@@ -2268,6 +2350,9 @@ function hubSub(id){
     case "history":{let c=0,tr=0;for(let i=1;i<=28;i++){const d=addDays(t,-i),st=dayStatus(S.days[d],null,d);if(isClosed(d)&&!st.any)continue;tr++;if(st.complete)c++}return `${c} of ${tr} days complete`}
     case "eho":{const l=inspSorted()[0];if(!l)return "No inspection recorded";const o=(l.issues||[]).filter(i=>!i.done).length;return `Rating ${l.rating??"–"} · ${o?n(o,"issue")+" open":"no open issues"}`}
     case "plans":{const due=S.plans.filter(d=>reviewState(d).overdue).length;return S.plans.length?`${n(S.plans.length,"document")}${due?` · ${due} due for review`:""}`:"None yet: start from a template"}
+    case "templog":{const d=S.days[t],us=S.settings.units;if(!us.length)return "No fridges or freezers set up";
+      const rs=us.map(u=>{const r=d&&d.temps&&d.temps[u.id]&&d.temps[u.id].am;return r&&r.v!=null?`${u.name}: ${r.v}°`:null}).filter(Boolean);
+      return rs.length?`Today: ${rs.join(" · ")}`:"No readings yet today"}
     case "deliveries":{const td=S.deliveries.filter(d=>d.date===t),rj=td.filter(d=>d.outcome==="rejected").length,l=[...S.deliveries].sort((a,b)=>(b.at||0)-(a.at||0))[0];
       return td.length?`Today: ${n(td.length,"delivery").replace("deliverys","deliveries")}${rj?` · ${rj} rejected`:""}`:l?`Last: ${l.supplier}, ${short(l.date)}`:"No deliveries recorded yet"}
     case "maintenance":{const o=S.maintenance.filter(m=>m.status!=="done"),u=o.filter(m=>m.priority==="urgent").length,mine=o.filter(m=>m.assignee===S.me).length;return o.length?`${n(o.length,"open job")}${u?` · ${u} urgent`:""}${mine?` · ${mine} assigned to you`:""}`:"Nothing reported"}
@@ -2627,10 +2712,10 @@ $("#pubGo").addEventListener("click",async()=>{
   }catch(e){fail(e);pubNote="Publishing stopped part-way. Check each site's setup, then try again.";renderPublish()}
 });
 
-function renderAll(){refreshPickers();renderSites();renderNav();renderHead();renderAddBtn();renderDay();renderWeek();renderHistory();renderTasks("extras");renderTasks("cleaning");renderProve();renderDeliveries();renderMaint();renderAllergenDocs();renderAllergens();renderPlansList();renderSuppliers();renderContacts();renderStaff();renderOnbList();renderInspList();renderReview();renderSetup();renderInspect()}
+function renderAll(){refreshPickers();renderSites();renderNav();renderHead();renderAddBtn();renderDay();renderWeek();renderHistory();renderTasks("extras");renderTasks("cleaning");renderProve();renderTempLog();renderDeliveries();renderMaint();renderAllergenDocs();renderAllergens();renderPlansList();renderSuppliers();renderContacts();renderStaff();renderOnbList();renderInspList();renderReview();renderSetup();renderInspect()}
 
 /* ---------- tabs ---------- */
-const TABS=["day","week","history","inspect","extras","cleaning","prove","allergens","deliveries","maintenance","eho","plans","suppliers","contacts","staff","onboarding","review","setup","records","more"];
+const TABS=["day","week","history","inspect","extras","cleaning","prove","allergens","templog","deliveries","maintenance","eho","plans","suppliers","contacts","staff","onboarding","review","setup","records","more"];
 function show(tab,opts){
   if(!TABS.includes(tab))tab="day";
   if(!canTab(tab)){if(S.role==="staff"&&MANAGER_TABS.has(tab)&&!(opts&&opts.quiet))toast("That section is for managers.");tab="day"}
@@ -2641,6 +2726,7 @@ function show(tab,opts){
   $("#dayCtl").hidden=tab!=="day";$("#weekCtl").hidden=tab!=="week";updFab();
   renderHead();renderNav();renderAddBtn();
   if(tab==="inspect")renderInspect();
+  if(tab==="templog")renderTempLog();
   if(tab==="maintenance"||tab==="staff")loadTeam();
   if(changed&&!(opts&&opts.keepScroll))window.scrollTo({top:0});
   try{localStorage.setItem("sfbb.tab",tab)}catch(e){}
@@ -2688,7 +2774,7 @@ function subscribeSite(){
   const hub=()=>{if(S.tab==="records"||S.tab==="more")renderNav()};
   const list=(col,key,after,q)=>sub(q||C(col,site),x=>{S[key]=x.docs.map(d=>({id:d.id,...d.data()}));after();hub()});
   sub(D("settings","main",site),x=>{S.settings=normSettings(x.exists?x.data():null);S.cfg=activeCfg(S.settings);fillProve();applyTabs();renderAll()});
-  sub(C("days",site).orderBy("date","desc").limit(400),q=>{const m={};for(const d of q.docs)m[d.id]=d.data();S.days=m;renderDay();renderHistory();renderReview()});
+  sub(C("days",site).orderBy("date","desc").limit(400),q=>{const m={};for(const d of q.docs)m[d.id]=d.data();S.days=m;renderDay();renderHistory();renderReview();renderTempLog()});
   sub(C("weeks",site).orderBy("week","desc").limit(120),q=>{const m={};for(const d of q.docs)m[d.id]=d.data();S.weeks=m;renderWeek()});
   list("allergens","allergens",renderAllergens);
   list("allergenDocs","allergenDocs",renderAllergenDocs);
@@ -2747,7 +2833,7 @@ $("#revSave").addEventListener("click",async()=>{
 document.querySelectorAll(".note.intro").forEach(n=>{n.setAttribute("title","Tap to read more");n.addEventListener("click",()=>n.classList.toggle("full"))});
 
 /* ---------- boot ---------- */
-inspectForm();buildAlgChecks();buildTaskForm("extras");buildTaskForm("cleaning");proveForm();delivForm();maintForm();supForm();conForm();staffForm();editStaff(null);
+inspectForm();tempLogForm();buildAlgChecks();buildTaskForm("extras");buildTaskForm("cleaning");proveForm();delivForm();maintForm();supForm();conForm();staffForm();editStaff(null);
 applyTabs();renderAll();
 (async()=>{
   const[db,user,assets]=await Promise.all([window.claude?.use?.("db"),window.claude?.use?.("user"),window.claude?.use?.("assets")]);

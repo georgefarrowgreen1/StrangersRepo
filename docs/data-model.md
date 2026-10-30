@@ -62,7 +62,7 @@ A check's `from` is the day it was added (saved in Setup, or published to the si
 `startDate` (YYYY-MM-DD) is the first day the diary counts at the site. It is filled in with the date Setup is first saved; then empty earlier days are never counted as missed. `startSet: true` means someone chose it in Setup → Diary starts on (optionally for all four sites): every day before it is left out of Last 4 weeks and EHO inspection mode, though the records stay in the database and can still be opened by date. Cleaning and extra checks have their own `lastAt` dates and are not affected.
 
 
-**`days/<YYYY-MM-DD>`**: one diary page.
+**`days/<YYYY-MM-DD>`**: one diary page. A temperature reading `temps.<unit>.am` is `{v, by, at}`; when it is added later or changed from Records → Temperature log it also has `note`, `late: true` (added after the day) or `amended: true`, and `was: {v, by, at}` (the first value); a removed reading keeps `was` with `v: null`.
 ```
 date
 temps:{<unitId>:{am:{v,by,at}}}
