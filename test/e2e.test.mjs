@@ -117,6 +117,31 @@ test("staff journey on the real page", async () => {
   assert.equal(day.data.temps.u1.am.v, 3.5);
   assert.ok(day.data.closing.allDone, "Tick all records who confirmed");
 
+  // Records → Temperature log: today's reading shows; add yesterday's missed reading, then correct it (a reason is
+  // needed for a past day, and the first value is kept).
+  await openSection(page, "templog");
+  await page.locator("#tlList .xrow", { hasText: "Today" }).locator(".pill", { hasText: "Fridge 1: 3.5°" }).waitFor();
+  const yIso = await page.evaluate(() => { const d = new Date(); d.setDate(d.getDate() - 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; });
+  const yRow = page.locator("#tlList .xrow").nth(1);
+  await yRow.locator(".xmain").click();
+  await yRow.locator(`#tl_${yIso}_u1`).fill("4");
+  await yRow.locator(".btn", { hasText: "Save changes" }).click();
+  await assert.doesNotReject(waitFor(async () => (await api("get", { path: `sites/cafe/days/${yIso}` })).data?.temps?.u1?.am?.v === 4), "missed reading added");
+  assert.equal((await api("get", { path: `sites/cafe/days/${yIso}` })).data.temps.u1.am.late, true, "marked as added later");
+  const yRow2 = page.locator("#tlList .xrow").nth(1);
+  if (!(await yRow2.locator(`#tl_${yIso}_u1`).isVisible())) await yRow2.locator(".xmain").click();
+  await yRow2.locator(`#tl_${yIso}_u1`).fill("4.5");
+  await yRow2.locator(".btn", { hasText: "Save changes" }).click();
+  await page.locator("#toast", { hasText: "Say why the reading is being changed" }).waitFor();
+  await yRow2.locator("input[type=text]").fill("Misread the display");
+  await yRow2.locator(".btn", { hasText: "Save changes" }).click();
+  await assert.doesNotReject(waitFor(async () => (await api("get", { path: `sites/cafe/days/${yIso}` })).data.temps.u1.am.v === 4.5), "reading corrected");
+  const yAm = (await api("get", { path: `sites/cafe/days/${yIso}` })).data.temps.u1.am;
+  assert.equal(yAm.was.v, 4, "first value kept");
+  assert.equal(yAm.note, "Misread the display");
+  assert.equal(yAm.by, "web:Sam Patel");
+  await page.locator("#tlList .xrow").nth(1).locator(".tlh", { hasText: "First recorded as 4°C" }).waitFor();
+
   // Sign off the week.
   await openSection(page, "week");
   await page.locator("#wkFoot button", { hasText: "Tick all" }).click();
@@ -400,7 +425,7 @@ test("staff journey on the real page", async () => {
   await page.locator("#avatarBtn", { hasText: "AB" }).waitFor();
   assert.deepEqual(await accountMenu(page), ["Switch person", "Set a quick PIN", "Change password", "Sign out"]);
   await page.locator("#tabbar .tab", { hasText: "Records" }).click();
-  assert.deepEqual(await page.locator("#recordsHub .lrow b").allTextContents(), ["Extra checks", "Cleaning", "Prove it", "Allergens", "Deliveries", "Maintenance"]);
+  assert.deepEqual(await page.locator("#recordsHub .lrow b").allTextContents(), ["Extra checks", "Cleaning", "Prove it", "Allergens", "Temperature log", "Deliveries", "Maintenance"]);
 
   // Staff check a delivery: a supplier from the Roastery's list, cream too warm, so it's rejected with a reason.
   const alexCookie = (await ctx.cookies()).map((c) => `${c.name}=${c.value}`).join("; ");
@@ -554,7 +579,7 @@ test("staff journey on the real page", async () => {
 async function openSection(page, tab) {
   const tabs = { day: "Today", week: "Week" };
   if (tabs[tab]) return page.locator("#tabbar .tab", { hasText: tabs[tab] }).click();
-  const name = { history: "Last 4 weeks", extras: "Extra checks", cleaning: "Cleaning", prove: "Prove it", allergens: "Allergens", deliveries: "Deliveries", maintenance: "Maintenance", eho: "Last EHO inspection report",
+  const name = { history: "Last 4 weeks", extras: "Extra checks", cleaning: "Cleaning", prove: "Prove it", templog: "Temperature log", allergens: "Allergens", deliveries: "Deliveries", maintenance: "Maintenance", eho: "Last EHO inspection report",
     plans: "HACCP & risk", suppliers: "Suppliers", contacts: "Contacts", staff: "Staff training", onboarding: "Onboarding", review: "4-weekly review", setup: "Setup" }[tab];
   for (const hub of ["Records", "More"]) {
     await page.locator("#tabbar .tab", { hasText: hub }).click();
