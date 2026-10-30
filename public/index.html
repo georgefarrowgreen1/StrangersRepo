@@ -218,6 +218,8 @@
       </div>
       <div class="label">How urgent</div>
       <div class="methods pri" id="mPri" role="radiogroup" aria-label="How urgent"></div>
+      <div class="label">Assigned to</div>
+      <div class="methods who" id="mWho" role="radiogroup" aria-label="Assigned to"></div>
       <div class="row"><button class="btn" id="mSave">Save job</button><button class="btn ghost danger" id="mDelete" hidden>Remove job</button><span class="by" id="mMsg"></span></div>
     </section>
     <div class="row spread"><div class="seg" id="mScope" role="group" aria-label="Which sites"><button type="button" data-scope="site">This site</button><button type="button" data-scope="all">All sites</button></div></div>
@@ -346,6 +348,13 @@
       <div class="row"><button class="btn" id="tSave">Save training record</button><button class="btn ghost" id="tCancel" hidden>Cancel edit</button><button class="btn ghost danger" id="tDelete" hidden>Remove person</button><span class="by" id="tMsg"></span></div>
     </section>
     <p class="note intro">The date each person was trained on each safe method. Train new staff before they handle food, and refresh when methods change.</p>
+    <section class="panel" id="tImport" hidden>
+      <div class="row spread"><h2 id="tImpTitle">New accounts to add</h2><span class="pill acc" id="tImpPill"></span></div>
+      <p class="note">People with a diary account who aren't on this site's training list yet. Untick anyone you don't want to add.</p>
+      <div class="toggles" id="tImpList"></div>
+      <div class="toggles"><label for="tImpAll"><input type="checkbox" id="tImpAll">Add them at all four sites</label></div>
+      <div class="row"><button class="btn" id="tImpGo">Add to the staff list</button><span class="by" id="tImpMsg" role="status"></span></div>
+    </section>
     <div class="stat3" id="tStats"></div>
     <div class="list glass" id="tList"></div>
     <section class="panel onlywide"><h2>Training chart</h2><div id="tMatrix"></div></section>

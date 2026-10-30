@@ -269,8 +269,18 @@ test("staff journey on the real page", async () => {
   assert.match(await page.locator("#planEditView .doc-table .rate.bad").first().innerText(), /15 High/);
   await page.locator("#plBack").click();
 
-  // Staff training: one date applied to every topic, then a topic the Roastery doesn't need switched off.
+  // Staff training: accounts not on the list yet can be added in one go (untick anyone not wanted).
   await openSection(page, "staff");
+  await page.locator("#tImport #tImpList label", { hasText: "Alex Brown" }).waitFor();
+  assert.match(await page.locator("#tImpList").innerText(), /Sam Patel/);
+  await page.locator("#tImpList label", { hasText: "Sam Patel" }).click();
+  await page.locator("#tImpGo", { hasText: "Add 1 person to the staff list" }).click();
+  await page.locator("#tList .xrow", { hasText: "Alex Brown" }).waitFor();
+  assert.equal((await api("query", { path: "staff" })).docs.filter((d) => d.data.name === "Sam Patel").length, 0, "unticked person not added");
+  await page.locator("#tImpList label", { hasText: "Sam Patel" }).waitFor();
+  assert.equal(await page.locator("#tImpList label", { hasText: "Alex Brown" }).count(), 0, "added person leaves the import list");
+
+  // Staff training: one date applied to every topic, then a topic the Roastery doesn't need switched off.
   await page.click("#addBtn");
   await page.fill("#tName", "Jo Smith");
   await page.fill("#tAllDate", "2026-10-20");
@@ -433,8 +443,16 @@ test("staff journey on the real page", async () => {
   await page.fill("#mTitle", "Grinder burrs need replacing");
   await page.fill("#mArea", "Grinder");
   await page.locator("#mPri button", { hasText: "When possible" }).click();
+  await page.locator("#mWho button", { hasText: "Sam Patel" }).click();
   await page.click("#mSave");
   await page.locator("#mList .xrow", { hasText: "Grinder burrs" }).waitFor();
+  assert.match(await page.locator("#mList .xrow", { hasText: "Grinder burrs" }).innerText(), /→ Sam Patel/, "shows who it's assigned to");
+  const grinder = page.locator("#mList .xrow", { hasText: "Grinder burrs" });
+  await grinder.locator(".xmain").click();
+  await grinder.locator(".btn", { hasText: "Assign to me" }).click();
+  await assert.doesNotReject(waitFor(async () => (await api("query", { path: "maintenance" })).docs.some((d) => d.data.title === "Grinder burrs need replacing" && d.data.assignee === "web:Alex Brown")),
+    "reassigned with one tap");
+  await page.locator("#mList .xrow", { hasText: "Grinder burrs" }).locator(".xmain").click();
   assert.equal(await page.locator("#mList .xrow", { hasText: "Dishwasher" }).count(), 0, "this site only");
   await page.locator("#mScope button", { hasText: "All sites" }).click();
   await page.locator("#mList .xrow", { hasText: "Dishwasher not draining" }).locator(".pill.bad", { hasText: "Urgent" }).waitFor();

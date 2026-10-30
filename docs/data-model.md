@@ -80,7 +80,7 @@ The page writes these with nested `update`s such as `{temps:{u1:{am:{v:3.2,by,at
 
 **`deliveries/<id>`**: `date (YYYY-MM-DD), at, supplier, supplierId (suppliers/<id> at that site, or null if typed), items, chilled (°C or null), frozen (°C or null), noTemp, packaging ("ok"|"no"), order ("ok"|"no"), outcome ("accepted"|"rejected"), note, by`. Chilled passes at 8°C or below (5°C ideal), frozen at −15°C or below (−18°C ideal). A rejection, or accepting despite a failed check, needs a `note`. Staff can write.
 
-**`maintenance/<id>`**: `title, area, details, priority ("urgent"|"soon"|"later"), status ("open"|"done"), reportedBy, reportedAt, at, doneBy?, doneAt?, fixNote?, log:[{at,by,what:"Done"|"Reopened",note}]` (newest first, max 30). Staff can write. Maintenance → All sites reads every site's collection.
+**`maintenance/<id>`**: `title, area, details, priority ("urgent"|"soon"|"later"), status ("open"|"done"), assignee? ("web:<name>" or null), assigneeName?, reportedBy, reportedAt, at, doneBy?, doneAt?, fixNote?, log:[{at,by,what:"Done"|"Reopened"|"Assigned to <name>"|"Unassigned",note}]` (newest first, max 30). The people to assign come from `user.team()` (everyone with an account). Staff can write. Maintenance → All sites reads every site's collection.
 
 **`proveit/<id>`**: `date, method, food, reading, unit, pass, action, by, at`
 

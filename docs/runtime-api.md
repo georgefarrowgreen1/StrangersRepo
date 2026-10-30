@@ -68,7 +68,9 @@ me(): Promise<{id, name, avatarUrl, role, quickPin, quickSwitch}>
 //  quickPin: has set a quick PIN, quickSwitch: this device can switch person with one}
 can(perm: "data.write"): Promise<boolean>                       // true for any signed-in person
 profiles(ids: string[]): Promise<Record<string, {name: string}>>
+team(): Promise<Array<{id, name, role}> | null>                 // everyone with an active account; null offline
 ```
+`team` (GET `/api/auth/team`) lists names and roles only, never usernames. The page uses it to assign maintenance jobs and to add new accounts to Staff training.
 `profiles` resolves names for the "by" ids on records:
 - `web:<name>` → `<name>`.
 - `u_…` (older records made in the Claude version of the diary) → the name in `config/people`, else `""`. The page shows "a team member" for `""`.

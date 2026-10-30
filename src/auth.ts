@@ -353,6 +353,14 @@ export async function handleAuth(req: Request, env: Env, route: string, current:
     return json({ ok: true });
   }
 
+  // Everyone with an active account: names and roles only (never usernames), so the page can assign maintenance
+  // jobs to people and add new accounts to Staff training. Any signed-in person may read it.
+  if (route === "team" && req.method === "GET") {
+    if (!current) throw new ApiError(401, "unauthenticated", "Sign in to continue.");
+    const { results } = await env.DB.prepare("SELECT name, role FROM users WHERE active = 1 ORDER BY name_key").all<{ name: string; role: string }>();
+    return json({ team: results.map((r) => ({ id: "web:" + r.name, name: r.name, role: r.role })) });
+  }
+
   // Who can switch in on this device: names only, for the "Switch person" list.
   if (route === "people" && req.method === "GET") {
     if (!(await trustedDevice(req, env))) return json({ people: [] });
