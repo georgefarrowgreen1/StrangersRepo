@@ -806,6 +806,17 @@ function renderDeliveries(){
   resolveNames(ids);
 }
 
+/* ---------- the team (everyone with an account) ---------- */
+S.team=[];
+let teamLoading=null;
+// Refreshed when the diary opens and whenever Maintenance or Staff training is opened, so new accounts show up.
+function loadTeam(){
+  if(!S.user||!S.user.team||teamLoading)return teamLoading;
+  teamLoading=S.user.team().then(t=>{teamLoading=null;if(Array.isArray(t)){S.team=t;renderMaint();renderStaff()}},()=>{teamLoading=null});
+  return teamLoading;
+}
+const ROLE_NAME={staff:"Staff",manager:"Manager",admin:"Admin"};
+
 /* ---------- maintenance ----------
    Equipment problems and general jobs, per site. All sites shows every site's open and finished jobs together. */
 const MT_PRI=[["urgent","Urgent","Unsafe, or stops us working","bad"],["soon","Soon","Needs doing this week","warn"],["later","When possible","Not holding anything up",""]];
@@ -815,9 +826,17 @@ function maintForm(){
   const pr=$("#mPri");pr.replaceChildren();
   for(const[k,l,h]of MT_PRI)pr.append(el("button",{type:"button",role:"radio","data-pri":k,onclick:()=>setMtPri(k)},el("b",{text:l}),el("span",{text:h})));
   $("#mSave").addEventListener("click",saveMaint);
+  $("#mWho").dataset.v="";
   armDelete($("#mDelete"),"Remove job",async()=>{if(await save(()=>D("maintenance",editMt).delete())){editMaint(null);toast("Job removed")}});
   for(const b of document.querySelectorAll("#mScope button"))b.addEventListener("click",()=>{maintAll=b.dataset.scope==="all";renderMaint()});
   editMaint(null);
+}
+// "Assigned to": one tap on a name (everyone with an account), or Not assigned. Stored as their record id and name.
+function renderMtWho(){
+  const box=$("#mWho");if(!box)return;const cur=box.dataset.v||"";box.replaceChildren();
+  const people=[...S.team];if(cur&&!people.some(p=>p.id===cur))people.push({id:cur,name:box.dataset.name||nameOf(cur)});
+  for(const[id,label]of[["","Not assigned"],...people.map(p=>[p.id,p.id===S.me?`${p.name} (you)`:p.name])])
+    box.append(el("button",{type:"button",role:"radio","aria-checked":String(cur===id),class:cur===id?"on":"",onclick:()=>{box.dataset.v=id;box.dataset.name=label.replace(/ \(you\)$/,"");renderMtWho()}},label));
 }
 function setMtPri(k){for(const b of document.querySelectorAll("#mPri button")){const on=b.dataset.pri===k;b.classList.toggle("on",on);b.setAttribute("aria-checked",String(on))}$("#mPri").dataset.v=k}
 function editMaint(m){
@@ -825,13 +844,22 @@ function editMaint(m){
   $("#mFormTitle").textContent=m?"Edit "+m.title:"Report a maintenance job";
   $("#mTitle").value=m?m.title:"";$("#mArea").value=m?(m.area||""):"";$("#mDetails").value=m?(m.details||""):"";
   setMtPri(m?m.priority:"soon");$("#mDelete").hidden=!m;$("#mMsg").textContent="";
+  $("#mWho").dataset.v=m&&m.assignee||"";$("#mWho").dataset.name=m&&m.assigneeName||"";renderMtWho();
   setForm("maintenance",!!m);
 }
 async function saveMaint(){
   const title=$("#mTitle").value.trim();if(!title){$("#mMsg").textContent="Say what needs doing first.";return}
-  const v={title,area:$("#mArea").value.trim(),details:$("#mDetails").value.trim(),priority:$("#mPri").dataset.v||"soon",at:Date.now()};
+  const who=$("#mWho").dataset.v||"";
+  const v={title,area:$("#mArea").value.trim(),details:$("#mDetails").value.trim(),priority:$("#mPri").dataset.v||"soon",
+    assignee:who||null,assigneeName:who?($("#mWho").dataset.name||nameOf(who)):null,at:Date.now()};
   const ok=editMt?await save(()=>D("maintenance",editMt).update(v)):await save(()=>C("maintenance").add({...v,status:"open",reportedBy:S.me,reportedAt:Date.now(),log:[]}));
   if(ok){toast(`${editMt?"Saved":"Reported"}: ${title}`);editMaint(null)}
+}
+// Change who a job is assigned to straight from the list.
+async function assignMaint(m,site,id){
+  const p=S.team.find(x=>x.id===id),name=id?(p?p.name:nameOf(id)):null;
+  const log=[{at:Date.now(),by:S.me,what:id?`Assigned to ${name}`:"Unassigned",note:""},...(m.log||[])].slice(0,30);
+  if(await save(()=>D("maintenance",m.id,site).update({assignee:id||null,assigneeName:name,log})))toast(id?`${m.title}: assigned to ${id===S.me?"you":name}`:`${m.title}: not assigned`);
 }
 async function setMaintDone(m,site,done,note){
   const log=[{at:Date.now(),by:S.me,what:done?"Done":"Reopened",note:note||""},...(m.log||[])].slice(0,30);
@@ -852,10 +880,18 @@ function renderMaint(){
     const hist=(m.log||[]).slice(0,5).map(e=>{ids.push(e.by);return el("li",{},el("span",{text:when(e.at)}),el("span",{class:"s",text:`${e.what} · ${nameOf(e.by)}${e.note?" · "+e.note:""}`}))});
     return xrow("m"+site+m.id,{
       title:m.title,
-      sub:[maintAll?siteOf(site).name:"",m.area,isDone?`done ${short(iso(new Date(m.doneAt)))}, ${nameOf(m.doneBy)}`:`reported ${short(iso(new Date(m.reportedAt||m.at||Date.now())))}, ${nameOf(m.reportedBy)}`].filter(Boolean).join(" · "),
+      sub:[maintAll?siteOf(site).name:"",m.area,!isDone&&m.assignee?`→ ${m.assignee===S.me?"you":m.assigneeName||nameOf(m.assignee)}`:"",isDone?`done ${short(iso(new Date(m.doneAt)))}, ${nameOf(m.doneBy)}`:`reported ${short(iso(new Date(m.reportedAt||m.at||Date.now())))}, ${nameOf(m.reportedBy)}`].filter(Boolean).join(" · "),
       right:[el("span",{class:"pill "+(isDone?"ok":pr[3]),text:isDone?"Done":pr[1]})],
       details:[m.details?el("p",{class:"how",text:m.details}):null,
         isDone&&m.fixNote?xfacts([["What was done",m.fixNote]]):null,
+        !isDone?(R?xfacts([["Assigned to",m.assignee?m.assigneeName||nameOf(m.assignee):"Not assigned"]]):(()=>{
+          const sel=el("select",{"aria-label":"Assigned to, for "+m.title});
+          const people=[...S.team];if(m.assignee&&!people.some(p=>p.id===m.assignee))people.push({id:m.assignee,name:m.assigneeName||nameOf(m.assignee)});
+          sel.append(el("option",{value:""},"Not assigned"),...people.map(p=>el("option",{value:p.id},p.id===S.me?`${p.name} (you)`:p.name)));
+          sel.value=m.assignee||"";sel.addEventListener("change",()=>assignMaint(m,site,sel.value));
+          const meBtn=m.assignee===S.me?null:el("button",{class:"btn ghost sm",type:"button",onclick:()=>assignMaint(m,site,S.me)},"Assign to me");
+          return el("div",{class:"row assign"},el("span",{class:"label",text:"Assigned to"}),sel,meBtn);
+        })()):null,
         R?null:isDone?el("div",{class:"row"},el("button",{class:"btn ghost sm",type:"button",onclick:()=>setMaintDone(m,site,false)},"Reopen"))
           :el("div",{class:"row"},note,el("button",{class:"btn sm",type:"button",onclick:()=>setMaintDone(m,site,true,note.value.trim())},"Mark as done")),
         hist.length?el("ul",{class:"hist"},...hist):null,
@@ -865,6 +901,7 @@ function renderMaint(){
   if(open.length)box.append(el("div",{class:"label"+(open.some(x=>x.m.priority==="urgent")?" bad":""),text:`Open · ${open.length}`}),el("div",{class:"list glass"},...open.map(row)));
   if(done.length)box.append(el("div",{class:"label",text:`Done · ${done.length}`}),el("div",{class:"list glass"},...done.map(row)));
   $("#mFormPanel").hidden=R||!formOpen.maintenance;
+  renderMtWho();
   resolveNames(ids.filter(Boolean));
 }
 
@@ -1615,7 +1652,44 @@ async function setTopicOff(k,on){
   const ok=await save(()=>S.settings.fresh?D("settings","main",S.site).set({...storable(S.settings),...patch}):D("settings","main",S.site).update(patch));
   if(ok)toast(`${TOPICS.find(t=>t[0]===k)[1]} ${on?"added back for":"removed from"} the ${curSite().name}`);else renderStaff();
 }
+// Staff training → "New accounts to add": everyone with an account who isn't on this site's list yet (matched by
+// name), ticked by default. One tap adds them, here or at all four sites, with no training dates yet.
+const impSkip=new Set();
+function renderStaffImport(){
+  const panel=$("#tImport");if(!panel)return;
+  const have=new Set(S.staff.map(x=>normT(x.name)));
+  const missing=S.team.filter(p=>!have.has(normT(p.name)));
+  panel.hidden=ro()||!S.db||!missing.length||S.role==="staff";
+  if(panel.hidden)return;
+  const box=$("#tImpList");box.replaceChildren();
+  for(const p of missing){const id="ti_"+normT(p.name).replace(/[^a-z0-9]+/g,"_");
+    const cb=el("input",{type:"checkbox",id});cb.checked=!impSkip.has(p.id);
+    cb.addEventListener("change",()=>{cb.checked?impSkip.delete(p.id):impSkip.add(p.id);updImp()});
+    box.append(el("label",{for:id},cb,el("span",{},p.name,el("span",{class:"s",text:" · "+(ROLE_NAME[p.role]||p.role)}))))}
+  const updImp=()=>{const n=missing.filter(p=>!impSkip.has(p.id)).length;$("#tImpGo").textContent=n?`Add ${n} ${n===1?"person":"people"} to the staff list`:"Tick someone to add";$("#tImpGo").disabled=!n;
+    $("#tImpPill").textContent=`${missing.length} new`;};
+  updImp();
+  $("#tImpGo").onclick=async()=>{
+    const people=missing.filter(p=>!impSkip.has(p.id));if(!people.length)return;
+    const sites=$("#tImpAll").checked?SITES.map(x=>x.id):[S.site];
+    $("#tImpGo").disabled=true;$("#tImpMsg").textContent="Adding…";
+    let added=0;const fails=[];
+    for(const site of sites){
+      let existing=[];
+      try{existing=site===S.site?S.staff:(await C("staff",site).get()).docs.map(d=>d.data()||{})}catch(e){fails.push(siteOf(site).name);continue}
+      const there=new Set(existing.map(x=>normT(x.name)));
+      for(const p of people){
+        if(there.has(normT(p.name)))continue;
+        const rec={name:p.name,role:"",start:"",topics:{},notes:"",personId:"p"+Date.now().toString(36)+Math.random().toString(36).slice(2,6),sites,at:Date.now()};
+        try{await C("staff",site).add(rec);if(site===S.site)added++}catch(e){if(!fails.includes(siteOf(site).name))fails.push(siteOf(site).name)}
+      }
+    }
+    $("#tImpMsg").textContent=fails.length?`Couldn't add everyone at the ${fails.join(", ")}. Try again.`:"";
+    toast(`Added ${people.length} ${people.length===1?"person":"people"} to the staff list${sites.length>1?" at all four sites":""}`);
+  };
+}
 function renderStaff(){
+  renderStaffImport();
   const TOPICS=siteTopics();
   for(const n of document.querySelectorAll("#tTopics [data-topic]"))n.hidden=!TOPICS.some(([k])=>k===n.dataset.topic);
   const tb0=$("#tTopicToggles");tb0.replaceChildren();
@@ -1902,7 +1976,7 @@ function inspectSections(R){
   out.push({id:"maintenance",title:"Maintenance",intro:"Equipment problems and maintenance jobs: everything still open, and anything reported or finished in the period.",
     cols:[{l:"Reported",w:72},{l:"Job",flex:1.2,bold:true},{l:"Equipment or area",w:95},{l:"Urgency",w:70},{l:"Status",w:110},{l:"What was done",flex:1.2}],
     rows:maintAll.filter(m=>m.status!=="done"||atIn(m.reportedAt)||atIn(m.doneAt)).sort((a,b)=>(b.reportedAt||0)-(a.reportedAt||0)).map(m=>{const pr=mtPri(m.priority);
-      return[m.reportedAt?pdfDate(iso(new Date(m.reportedAt))):"",m.title,m.area||"",{t:pr[1],cls:pr[3]},m.status==="done"?{t:`Done ${m.doneAt?pdfDate(iso(new Date(m.doneAt))):""}`,cls:"ok"}:{t:"Open",cls:pr[0]==="urgent"?"bad":"warn"},m.fixNote||m.details||""]}),
+      return[m.reportedAt?pdfDate(iso(new Date(m.reportedAt))):"",m.title,m.area||"",{t:pr[1],cls:pr[3]},m.status==="done"?{t:`Done ${m.doneAt?pdfDate(iso(new Date(m.doneAt))):""}`,cls:"ok"}:{t:"Open"+(m.assignee?` · ${m.assigneeName||fullName(m.assignee)}`:""),cls:pr[0]==="urgent"?"bad":"warn"},m.fixNote||m.details||""]}),
     empty:"No maintenance jobs."});
   out.push({id:"reviews",title:"4-weekly reviews",
     cols:[{l:"Date",w:80},{l:"Signed by",w:100},{l:"Changes reported",flex:1.4},{l:"Actions taken",flex:1.4}],
@@ -2196,7 +2270,7 @@ function hubSub(id){
     case "plans":{const due=S.plans.filter(d=>reviewState(d).overdue).length;return S.plans.length?`${n(S.plans.length,"document")}${due?` · ${due} due for review`:""}`:"None yet: start from a template"}
     case "deliveries":{const td=S.deliveries.filter(d=>d.date===t),rj=td.filter(d=>d.outcome==="rejected").length,l=[...S.deliveries].sort((a,b)=>(b.at||0)-(a.at||0))[0];
       return td.length?`Today: ${n(td.length,"delivery").replace("deliverys","deliveries")}${rj?` · ${rj} rejected`:""}`:l?`Last: ${l.supplier}, ${short(l.date)}`:"No deliveries recorded yet"}
-    case "maintenance":{const o=S.maintenance.filter(m=>m.status!=="done"),u=o.filter(m=>m.priority==="urgent").length;return o.length?`${n(o.length,"open job")}${u?` · ${u} urgent`:""}`:"Nothing reported"}
+    case "maintenance":{const o=S.maintenance.filter(m=>m.status!=="done"),u=o.filter(m=>m.priority==="urgent").length,mine=o.filter(m=>m.assignee===S.me).length;return o.length?`${n(o.length,"open job")}${u?` · ${u} urgent`:""}${mine?` · ${mine} assigned to you`:""}`:"Nothing reported"}
     case "suppliers":return S.suppliers.length?n(S.suppliers.length,"supplier"):"None listed yet";
     case "contacts":{const e=S.contacts.filter(c=>c.outOfHours).length;return S.contacts.length?`${n(S.contacts.length,"contact")}${e?` · ${e} out of hours`:""}`:"None listed yet"}
     case "staff":{const g=S.staff.filter(p=>siteTopics().some(([k])=>!(p.topics&&p.topics[k]))).length;return S.staff.length?(g?`${g} of ${S.staff.length} with training to do`:"Everyone trained"):"No one listed yet"}
@@ -2567,6 +2641,7 @@ function show(tab,opts){
   $("#dayCtl").hidden=tab!=="day";$("#weekCtl").hidden=tab!=="week";updFab();
   renderHead();renderNav();renderAddBtn();
   if(tab==="inspect")renderInspect();
+  if(tab==="maintenance"||tab==="staff")loadTeam();
   if(changed&&!(opts&&opts.keepScroll))window.scrollTo({top:0});
   try{localStorage.setItem("sfbb.tab",tab)}catch(e){}
 }
@@ -2683,6 +2758,7 @@ applyTabs();renderAll();
     const w=await S.user.can("data.write");if(w===false){S.canWrite=false;$("#readonly").hidden=false}
     S.myName=me.name||"";S.role=me.role||"staff";S.quickPin=!!me.quickPin;S.quickSwitch=!!me.quickSwitch;renderMe();
     if(!canTab(S.tab))show("day",{quiet:true});else renderNav();
+    loadTeam();
   }
   subscribeSummaries();
   subscribeSite();

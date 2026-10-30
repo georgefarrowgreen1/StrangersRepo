@@ -122,6 +122,11 @@ test("roles: staff record entries but can't change manager sections or use admin
   }
   assert.equal((await db("get", { path: "sites/cafe/settings/main" }, STAFF)).status, 200, "staff can still read");
   assert.equal((await admin("GET", "users", undefined, STAFF)).status, 403);
+  // Everyone signed in can list the team (names and roles, never usernames); signed out can't.
+  const team = await (await fetch(srv.base + "/api/auth/team", { headers: { cookie: STAFF } })).json();
+  assert.ok(Array.isArray(team.team) && team.team.length >= 2);
+  for (const p of team.team) { assert.deepEqual(Object.keys(p).sort(), ["id", "name", "role"]); assert.equal(p.id, "web:" + p.name); }
+  assert.equal((await fetch(srv.base + "/api/auth/team")).status, 401);
   const adm = await fetch(srv.base + "/admin", { headers: { cookie: STAFF }, redirect: "manual" });
   assert.equal(adm.headers.get("location"), "/");
   const r = await db("get", { path: "sites/cafe/days/2026-10-01" }, STAFF);

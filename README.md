@@ -19,7 +19,7 @@ Each site has its own diary. The site button at the top (or top of the sidebar) 
 
 - **Today**: progress through the day (temperatures, opening checks, closing checks, sign-off), anything overdue at the site, fridge and freezer readings with advice when one is out of range, the checklists, problems and changes, and one-tap sign-off as the signed-in person.
 - **Week**: the week's days at a glance, end-of-week checks, notes and sign-off.
-- **Records**: extra checks, cleaning schedule, Prove it checks (pass or fail worked out as you type), allergens (with search, "free from" filters and an allergen matrix PDF generated from the items for all 14 UK allergens), deliveries (temperature, packaging and order checks, accept or reject) and maintenance (equipment problems and jobs, per site or all sites together).
+- **Records**: extra checks, cleaning schedule, Prove it checks (pass or fail worked out as you type), allergens (with search, "free from" filters and an allergen matrix PDF generated from the items for all 14 UK allergens), deliveries (temperature, packaging and order checks, accept or reject) and maintenance (equipment problems and jobs, assigned to a person from the team, per site or all sites together).
 - **More**: last 4 weeks, **EHO inspection mode** (everyone: pick a period such as the last 1, 2, 3, 6 or 12 months or your own dates, see the daily diary, temperature log, corrective actions, cleaning, Prove it, deliveries, training, maintenance, reviews, allergens, suppliers, the last inspection and HACCP & risk documents in one view, and export it all as a PDF), and for managers the last EHO inspection report, HACCP plans and risk assessments, suppliers, contacts, staff training, onboarding documents, the 4-weekly review and Setup.
 
 On phones, Today, Week, Records and More are tabs at the bottom. On iPads in landscape and computers, every section is in a sidebar.
@@ -28,7 +28,7 @@ On phones, Today, Week, Records and More are tabs at the bottom. On iPads in lan
 
 Everyone signs in with a **username and password**. Signed out, only the sign-in page is visible. Three roles:
 - **Staff**: Today, Week, last 4 weeks, extra checks, cleaning, Prove it and allergens.
-- **Managers**: also EHO, HACCP & risk, suppliers, contacts, staff training, onboarding, the 4-weekly review and Setup.
+- **Managers**: also EHO, HACCP & risk, suppliers, contacts, staff training (with one tap to add new accounts to the list), onboarding, the 4-weekly review and Setup.
 - **Admins**: everything, plus the **Admin** page (account menu → Admin), where they add people, change roles, set temporary passwords and switch accounts off.
 
 Records show the person's name (set by an admin), not their username. The first admin account is created on the sign-in page with the **setup code** (see `README-deploy.md`).

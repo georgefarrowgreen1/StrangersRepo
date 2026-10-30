@@ -322,6 +322,11 @@
       try { return await api("profiles", { ids }); }
       catch (e) { if (e && e.code === OFFLINE) return null; throw e; } // null: keep the names already shown
     },
+    // Everyone with an active account: [{id: "web:<name>", name, role}]. null when offline.
+    async team() {
+      try { return (await call("/api/auth/team")).team; }
+      catch (e) { if (e && e.code === OFFLINE) return null; throw e; }
+    },
   };
 
   /* ---------- assets (allergen PDFs) ---------- */

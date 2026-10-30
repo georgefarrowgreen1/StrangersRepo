@@ -488,3 +488,11 @@ table.rk-grid .rk-corner{font-size:10px;width:40px}
 
 /* Setup: diary start date */
 #siStart{max-width:260px}
+
+/* Maintenance: who a job is assigned to */
+.methods.who{grid-template-columns:repeat(auto-fill,minmax(min(100%,140px),1fr))}
+.row.assign{align-items:center;flex-wrap:wrap;gap:8px}
+.row.assign .label{margin:0}
+.row.assign select{flex:1 1 180px;width:auto;max-width:280px}
+/* Staff training: new accounts to add */
+#tImpList label .s{color:var(--muted);font-size:13px}
